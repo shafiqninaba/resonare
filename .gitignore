@@ -172,3 +172,21 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+data/**
+!data/**/
+!data/**/.gitkeep
+
+# Virtual environments
+.venv
+
+
+logs/**
+!logs/**/
+!logs/**/.gitkeep
+
+.vscode/
+
+# uv
+uv.lock
+.python-version
