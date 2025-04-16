@@ -1,0 +1,18 @@
+[project]
+dependencies = [
+  "fine-tuning",
+  "pre-commit>=4.2.0"
+]
+description = "LLM Twin POC"
+name = "resonare"
+readme = "README.md"
+requires-python = ">=3.12"
+version = "0.1.0"
+
+[tool.uv.sources]
+fine-tuning = {workspace = true}
+
+[tool.uv.workspace]
+members = [
+  "packages/fine-tuning"
+]
