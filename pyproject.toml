@@ -1,6 +1,9 @@
 [project]
 dependencies = [
   "fine-tuning",
+  "data-prep",
+  "ipykernel>=6.29.5",
+  "loguru>=0.7.3",
   "pre-commit>=4.2.0"
 ]
 description = "LLM Twin POC"
@@ -10,9 +13,11 @@ requires-python = ">=3.12"
 version = "0.1.0"
 
 [tool.uv.sources]
+data-prep = {workspace = true}
 fine-tuning = {workspace = true}
 
 [tool.uv.workspace]
 members = [
-  "packages/fine-tuning"
+  "packages/fine-tuning",
+  "packages/data-prep"
 ]
