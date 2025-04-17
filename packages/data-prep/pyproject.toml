@@ -1,0 +1,9 @@
+[project]
+dependencies = [
+  "boto3>=1.37.35"
+]
+description = "Add your description here"
+name = "data-prep"
+readme = "README.md"
+requires-python = ">=3.12"
+version = "0.1.0"

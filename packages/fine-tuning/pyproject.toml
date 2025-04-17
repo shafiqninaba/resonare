@@ -4,9 +4,13 @@ requires = ["hatchling"]
 
 [project]
 dependencies = [
+  "datasets>=3.5.0",
   "fastapi",
   "numpy>=2.2.4",
-  "torch"
+  "torch",
+  "transformers>=4.51.3",
+  "trl>=0.15.2",
+  "unsloth>=2025.3.19"
 ]
 description = "Fine tuning service for Resonare"
 name = "fine-tuning"
