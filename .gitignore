@@ -190,3 +190,8 @@ logs/**
 # uv
 uv.lock
 .python-version
+
+**/unsloth_compiled_cache
+
+# hydra
+**/outputs
