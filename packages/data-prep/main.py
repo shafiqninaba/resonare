@@ -5,21 +5,25 @@ sessions, chunked by time and token limits, suitable for further analysis or
 LLM fine-tuning.
 
 This script performs the following steps:
-1. Loads a tokenizer (HuggingFace Transformers or fallback to TikToken).
+1. Loads a model specific tokenizer using HuggingFace Transformers (fallback to TikToken).
 
-2. Loads the raw JSON export and builds `Chat` objects containing `Message`
-   objects, filtering for textual content and applying the date limit if specified.
+2. Loads the raw JSON export from a single file or a directory of files.
+    - If a file is specified, it processes that single JSON file, which should contain a list of chats.
+    - If a directory is specified, it processes all JSON files within it, which should each contain a single chat.
+
+3. From the loaded raw data, start building `Chat` objects containing `Message` objects
+   filtering for textual content and applying the date limit if specified.
 
 3. Chunks messages within each chat into conversation 'blocks' based on time gaps
    (`convo_block_thereshold_secs`) and token counts (`min_tokens_per_block`,
-   `max_tokens_per_block`). Discards blocks outside the token range.
+   `max_tokens_per_block`). Discards blocks outside the token range. Discards conversations with no blocks.
 
 4. Merges consecutive messages from the same sender within each block,
-   prefixing each original message line with a delimiter (message_delimiter).
+   prefixing each original message line with a delimiter (`message_delimiter`).
 
 5. Calculates and logs summary statistics about the processed chats and blocks.
 
-6. Exports the processed data into two JSONL files:
+6. Exports the processed data into two JSON / JSONL files:
    - One file containing full chat metadata and all associated blocks.
    - One file containing only the processed blocks, one block per line,
      suitable for ML training pipelines.
@@ -33,9 +37,9 @@ from typing import List, Optional
 import hydra
 from loguru import logger
 from omegaconf import DictConfig
-from rich.progress import (
+from rich.progress import (  # TODO: implement rich progress bar for tasks
     BarColumn,
-    Progress,  # Not used currently, but available
+    Progress,
     TextColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
@@ -50,62 +54,61 @@ def main(cfg: DictConfig) -> None:
     # ---------------------
     # 1) Tokenizer loading
     # ---------------------
-    # We need a tokenizer to split message text into tokens for chunking and filtering:
-    #  - Prefer the same tokenizer family as our target model (e.g. BPE, SentencePiece, WordPiece) for accuracy.
-    #  - Use HuggingFace’s AutoTokenizer to load the tokenizer for the target model.
+    # We need a tokenizer to split chat messages into tokens and obtain token counts, for chunking and filtering:
+    #  - Prefer the same tokenizer family (e.g. BPE, SentencePiece, WordPiece) as our target finetuning model for accuracy.
+    #  - Use HuggingFace’s AutoTokenizer to load the specific tokenizer for the target model.
     #  - If that fails, fall back to OpenAI’s tiktoken (BPE) for speed and API‑compatibility.
-    tokenizer = load_tokenizer(cfg.model_id)
+    logger.info(f"Loading tokenizer for model {cfg.model_id} for token counting...")
+    tokenizer = load_tokenizer(model_name=cfg.model_id)
 
     # --------------------------------------------
-    # 2) Load raw data
+    # 2) Load raw data from JSON data
     # --------------------------------------------
-    # Decide whether to load a single file or a directory of files
-    mode = (
-        cfg.raw_input.mode.lower()
-    )  # Mode can be "file" (single JSON) or "dir" (multiple JSONs)
-    raw_chats = []
-    chats: List[Chat] = []
-    target_name = cfg.target_name  # Name identifying "our" side of the conversation, renamed to "system" in the output
-    date_limit = parse_date_limit(
-        cfg.date_limit
-    )  # Optional date limit for filtering messages
+    # We load the raw JSON export from a single file or a directory of files.
+    # if a file is specified, it processes that single JSON file, which should contain a list of individual chats.
+    # result.json: {chats: {list: {adam: {messages: []}, "zack": {messages: []}}}}
+    # if a directory is specified, it processes all JSON files within it, which should each contain a single chat.
+    # result.json: {name: "adam", type: "personal_chat", messages: [{from: "adam", text_entities: [], sticker_emoji: ""}]
+    logger.info("Loading chats from raw JSON data...")
 
+    mode = cfg.raw_input.mode.lower()
+    if mode not in ["file", "dir"]:
+        logger.error(
+            f"Invalid raw_input.mode: {mode}; must be 'file' or 'dir', defaulting to 'file'"
+        )
+        mode = "file"
+
+    # Handle a single export file (e.g., "result.json")
     if mode == "file":
-        # Handle a single export file (e.g., "result.json")
         fp = Path(cfg.raw_input.file)
         if not fp.is_file():
-            logger.error("Raw JSON export file not found: %s", fp)
+            logger.error(f"Raw JSON export file not found: {fp}")
             raise FileNotFoundError(fp)
 
-        data = json.loads(fp.read_text(encoding="utf-8"))
         try:
+            data = json.loads(fp.read_text(encoding="utf-8"))
             raw_chats = data["chats"]["list"]  # Extract the list of chats
-        except KeyError:
-            logger.error("Expected top-level 'chats.list' in %s", fp)
+        except Exception as e:
+            logger.error(f"Failed to load raw JSON export file {fp}: {e}")
             raise
 
+    # Handle a directory of individual chat JSON files
     elif mode == "dir":
-        # Handle a directory of individual chat JSON files
         dd = Path(cfg.raw_input.dir)
         if not dd.is_dir():
-            logger.error("Raw JSON directory not found: %s", dd)
+            logger.error(f"Raw JSON directory not found: {dd}")
             raise FileNotFoundError(dd)
 
+        raw_chats = []
         for chat_file in sorted(dd.glob("*.json")):
             try:
                 chat_data = json.loads(chat_file.read_text(encoding="utf-8"))
                 raw_chats.append(chat_data)
-            except json.JSONDecodeError as e:
-                logger.warning("Skipping invalid JSON file %s: %s", chat_file, e)
+            except Exception as e:
+                logger.error(f"Failed to load raw JSON export file {chat_file}: {e}")
+                continue
 
-    else:
-        # Invalid mode
-        logger.error("Unknown raw_input.mode: %s", cfg.raw_input.mode)
-        raise ValueError(
-            f"raw_input.mode must be 'file' or 'dir', got {cfg.raw_input.mode!r}"
-        )
-
-    logger.info(f"Found {len(raw_chats)} chat exports to process")
+    logger.info(f"Found {len(raw_chats)} chats to process")
 
     # --------------------------------------------
     # 3) Build Chat objects
@@ -123,11 +126,20 @@ def main(cfg: DictConfig) -> None:
     #  - blocks: A list of message blocks. Each block is a list of temporally
     #            and contextually related messages, chunked according to time
     #            and token limits. Defaults to an empty list.
-    logger.info("Processing potential chats from export...")
+    logger.info(
+        "Processing chats and building chat objects from loaded raw JSON data..."
+    )
+
+    chats: List[Chat] = []
+    target_name = cfg.target_name  # Name identifying "our" side of the conversation, renamed to "assistant" in the output
+    date_limit = parse_date_limit(
+        cfg.date_limit  # Optional date limit for filtering messages
+    )
+
     for chat in raw_chats:
         contact_name = chat.get("name")
-        # Skip chats without a name (deleted/anonymous)
-        if not contact_name:
+
+        if not contact_name:  # Skip chats without a name (deleted/anonymous)
             continue
 
         chat_type = chat.get("type")
@@ -162,7 +174,7 @@ def main(cfg: DictConfig) -> None:
 
                 msgs.append(
                     Message(
-                        role="system"
+                        role="assistant"  # Assign role based on sender
                         if sender == target_name
                         else "user",  # Assign sender role based on target_name
                         content=content,
@@ -171,7 +183,6 @@ def main(cfg: DictConfig) -> None:
                 )
 
             except Exception as e:
-                # Skip only this message on parse error, continue with the rest.
                 logger.warning(
                     f"[{contact_name}] skipping a message due to parse error: {e}"
                 )
@@ -190,10 +201,10 @@ def main(cfg: DictConfig) -> None:
                 )
             )
 
-    logger.info(f"Built {len(chats)} usable chats from raw export.")
+    logger.info(f"Built {len(chats)} usable chat objects.")
 
     # -------------------------------
-    # 4) Chunking into conversation blocks
+    # 4) Chunking each chat into conversation 'blocks'
     # -------------------------------
     # Split each Chat.messages into “blocks” so that each block:
     #   • Maintains temporal context (messages no more than time_threshold_sec apart)
@@ -201,16 +212,14 @@ def main(cfg: DictConfig) -> None:
     # This ensures that during LLM training each example has coherent context, and is neither too short (unhelpful) nor too long (slow to train on).
 
     convo_thereshold_secs = cfg.convo_block_thereshold_secs
-    max_tokens = cfg.min_tokens_per_block
-    min_tokens = cfg.max_tokens_per_block
+    min_tokens = cfg.min_tokens_per_block
+    max_tokens = cfg.max_tokens_per_block
 
-    # Sanity‑check thresholds
+    # Sanity‑checks
     if min_tokens >= max_tokens:
         logger.warning(
-            "convo_min_tokens (%d) ≥ convo_max_tokens (%d); "
-            "resetting to defaults (100, 3000)",
-            min_tokens,
-            max_tokens,
+            f"Invalid token thresholds: min_tokens ({min_tokens}) ≥ max_tokens ({max_tokens}). "
+            "Resetting to defaults: min_tokens=100, max_tokens=3000."
         )
         min_tokens, max_tokens = 100, 3000
 
@@ -218,11 +227,7 @@ def main(cfg: DictConfig) -> None:
     num_short_blocks = 0
     num_long_blocks = 0
 
-    logger.info(
-        f"Chunking conversations into blocks: "
-        f"max_tokens={max_tokens}, min_tokens={min_tokens}, "
-        f"convo_block_thereshold_secs={convo_thereshold_secs}"
-    )
+    logger.info("Chunking chats into blocks...")
     for chat in chats:
         chat.blocks = []
         current_block: List[Message] = []
@@ -270,10 +275,16 @@ def main(cfg: DictConfig) -> None:
             else:
                 num_long_blocks += 1
 
+    # Discard empty chats with empty blocks
+    num_original_chats = len(chats)
+    chats = [c for c in chats if c.blocks]
+    num_discarded_chats = num_original_chats - len(chats)
+
+    # Log the results
     num_total_blocks = sum(len(c.blocks) for c in chats)
     logger.info(
-        f"Chunking complete: {len(chats)} conversations → {num_total_blocks} blocks created; "
-        f"{num_short_blocks} too short discarded, {num_long_blocks} too long discarded"
+        f"Chunking complete: {num_original_chats} conversations → {len(chats)} conversations ({num_discarded_chats} discarded due to empty blocks), "
+        f"{num_total_blocks} chat blocks created; {num_short_blocks} too short, {num_long_blocks} too long."
     )
 
     # -------------------------------
@@ -299,9 +310,12 @@ def main(cfg: DictConfig) -> None:
             current_content = f"{delimiter} {first_msg.content.strip()}"
 
             for msg in block[1:]:
-                if msg.role == current_sender:
+                if (
+                    msg.role == current_sender
+                ):  # concatenate messages from the same sender
                     current_content += f"\n{delimiter} {msg.content.strip()}"
                 else:
+                    # Create and add the merged message to the list
                     merged_messages.append(
                         Message(
                             role=current_sender,
@@ -313,14 +327,15 @@ def main(cfg: DictConfig) -> None:
                     current_timestamp = msg.timestamp
                     current_content = f"{delimiter} {msg.content.strip()}"
 
-            # Add last merged message
-            merged_messages.append(
-                Message(
-                    role=current_sender,
-                    content=current_content,
-                    timestamp=current_timestamp,
+            # Add last merged message if exists
+            if current_content:
+                merged_messages.append(
+                    Message(
+                        role=current_sender,
+                        content=current_content,
+                        timestamp=current_timestamp,
+                    )
                 )
-            )
 
             merged_blocks.append(merged_messages)
 
@@ -329,7 +344,7 @@ def main(cfg: DictConfig) -> None:
     # -------------------------------
     # 6) Log summary statistics
     # -------------------------------
-    logger.info("Calculating final statistics...")
+    logger.info("Calculating statistics of processed chats...")
     chat_stats = calculate_chat_stats(chats, tokenizer)
 
     # Define the number of top entries to display
@@ -378,33 +393,34 @@ def main(cfg: DictConfig) -> None:
         f"Exporting processed chat data with metadata to: {processed_chats_filepath}"
     )
     try:
+        # Collect all chat records into a list
+        chat_records = []
+        for chat in chats:
+            chat_record = {
+                "contact_name": chat.contact_name,
+                "chat_type": chat.type,
+                "num_blocks": len(chat.blocks),
+                "blocks": [
+                    {
+                        "messages": [
+                            {
+                                "timestamp": msg.timestamp.isoformat(),
+                                "role": msg.role,
+                                "content": msg.content,
+                            }
+                            for msg in block
+                        ]
+                    }
+                    for block in chat.blocks
+                ],
+            }
+            chat_records.append(chat_record)
+
+        # Write the list of chat records as a single JSON object
         with processed_chats_filepath.open(
             "w", encoding="utf-8"
         ) as processed_chats_file:
-            for chat in chats:
-                chat_record = {
-                    "contact_name": chat.contact_name,
-                    "chat_type": chat.type,
-                    "num_blocks": len(chat.blocks),
-                    "blocks": [
-                        {
-                            "messages": [
-                                {
-                                    "timestamp": msg.timestamp.isoformat(),
-                                    "role": msg.role,
-                                    "content": msg.content,
-                                }
-                                for msg in block
-                            ]
-                        }
-                        for block in chat.blocks
-                    ],
-                }
-                # Write one JSON object per line
-                json.dump(
-                    chat_record, processed_chats_file, ensure_ascii=False, indent=2
-                )
-                processed_chats_file.write("\n")
+            json.dump(chat_records, processed_chats_file, ensure_ascii=False, indent=2)
 
     except Exception as e:
         logger.error(f"An unexpected error occurred during chat metadata export: {e}")
@@ -420,12 +436,13 @@ def main(cfg: DictConfig) -> None:
         ) as training_blocks_file:
             for chat in chats:
                 for block in chat.blocks:
+                    # TODO: add comments here for expeceted data format, and common keys like role, content
                     # Build the flat list of role/content dicts
-                    messages = [
-                        {"role": msg.role, "content": msg.content} for msg in block
-                    ]
-                    # Wrap it in the "messages" field
-                    record = {"messages": messages}
+                    record = {
+                        "messages": [
+                            {"role": msg.role, "content": msg.content} for msg in block
+                        ]
+                    }
                     # Dump one JSON object per line
                     json.dump(
                         record,

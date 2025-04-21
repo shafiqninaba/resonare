@@ -17,12 +17,12 @@ class Message(BaseModel):
     """Represents a single message within a chat.
 
     Attributes:
-        role: Identifier for the message sender ('user' or 'system').
+        role: Identifier for the message sender ('system', 'user', 'assistant').
         content: Textual content of the message.
         timestamp: Datetime object indicating when the message was sent.
     """
 
-    role: Literal["user", "system"]
+    role: Literal["system", "user", "assistant"]
     content: str
     timestamp: datetime
 

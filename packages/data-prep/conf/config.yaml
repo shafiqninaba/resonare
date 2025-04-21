@@ -34,7 +34,7 @@ date_limit: None        # Optional: skip messages before this date (e.g., "2025-
 # Token limits help ensure blocks are both consistent and efficient for training: too short = weak context, too long = inefficient.
 convo_block_thereshold_secs: 3600  # Max time gap (in seconds) between messages in a block
 min_tokens_per_block: 300          # Discard blocks shorter than this (low context)
-max_tokens_per_block: 2000         # Split or discard blocks longer than this (too large for model input)
+max_tokens_per_block: 800         # Split or discard blocks longer than this (too large for model input)
 
 # Message formatting
 # Each message in a block is prefixed with this delimiter, simulating the flow of chat, e.g. "User": >>> Hello!"

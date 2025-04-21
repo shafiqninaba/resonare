@@ -38,7 +38,6 @@ def load_tokenizer(model_name: str) -> AnyTokenizer:
     Raises:
         RuntimeError: If no tokenizer could be loaded.
     """
-    logger.info("Loading tokenizer for processing...")
     try:
         tokenizer = AutoTokenizer.from_pretrained(
             model_name,
