@@ -4,7 +4,17 @@ hydra:
     dir: "."  # Run tasks in the current directory
 
 # Input and output file paths
-raw_json_filepath: ./data/raw/result.json                      # Raw Telegram export file (usually named "result.json")
+# - Telegram allows exporting chats either as a single JSON file (often named result.json) 
+#   or as multiple JSON files, one per chat, stored in a directory.
+# - Use "mode" to switch between these two formats depending on your export type.
+raw_input:
+  mode: "file"            # Mode to specify how chat data is loaded:
+                          # - "file": Load a single JSON file (e.g., result.json).
+                          # - "dir": Load multiple JSON files from a directory.
+  file: "./data/raw/result.json"  # Path to the single JSON file containing all chats (e.g., Telegram export).
+  dir:  "./data/raw/chats/"      # Path to the directory containing individual chat JSON files.
+
+
 processed_chats_filepath: ./data/processed/chats.json         # Output path for processed full conversations (JSON)
 processed_blocks_filepath: ./data/processed/chat_blocks.jsonl  # Output path for conversation blocks (one block per line, JSONL)
 

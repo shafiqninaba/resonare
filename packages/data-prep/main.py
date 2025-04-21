@@ -57,7 +57,58 @@ def main(cfg: DictConfig) -> None:
     tokenizer = load_tokenizer(cfg.model_id)
 
     # --------------------------------------------
-    # 2) Load & build Chat objects
+    # 2) Load raw data
+    # --------------------------------------------
+    # Decide whether to load a single file or a directory of files
+    mode = (
+        cfg.raw_input.mode.lower()
+    )  # Mode can be "file" (single JSON) or "dir" (multiple JSONs)
+    raw_chats = []
+    chats: List[Chat] = []
+    target_name = cfg.target_name  # Name identifying "our" side of the conversation, renamed to "system" in the output
+    date_limit = parse_date_limit(
+        cfg.date_limit
+    )  # Optional date limit for filtering messages
+
+    if mode == "file":
+        # Handle a single export file (e.g., "result.json")
+        fp = Path(cfg.raw_input.file)
+        if not fp.is_file():
+            logger.error("Raw JSON export file not found: %s", fp)
+            raise FileNotFoundError(fp)
+
+        data = json.loads(fp.read_text(encoding="utf-8"))
+        try:
+            raw_chats = data["chats"]["list"]  # Extract the list of chats
+        except KeyError:
+            logger.error("Expected top-level 'chats.list' in %s", fp)
+            raise
+
+    elif mode == "dir":
+        # Handle a directory of individual chat JSON files
+        dd = Path(cfg.raw_input.dir)
+        if not dd.is_dir():
+            logger.error("Raw JSON directory not found: %s", dd)
+            raise FileNotFoundError(dd)
+
+        for chat_file in sorted(dd.glob("*.json")):
+            try:
+                chat_data = json.loads(chat_file.read_text(encoding="utf-8"))
+                raw_chats.append(chat_data)
+            except json.JSONDecodeError as e:
+                logger.warning("Skipping invalid JSON file %s: %s", chat_file, e)
+
+    else:
+        # Invalid mode
+        logger.error("Unknown raw_input.mode: %s", cfg.raw_input.mode)
+        raise ValueError(
+            f"raw_input.mode must be 'file' or 'dir', got {cfg.raw_input.mode!r}"
+        )
+
+    logger.info(f"Found {len(raw_chats)} chat exports to process")
+
+    # --------------------------------------------
+    # 3) Build Chat objects
     # --------------------------------------------
     # We assemble a list of Chat instances, each representing a chat:
     #  - contact_name: the person or group name
@@ -65,28 +116,15 @@ def main(cfg: DictConfig) -> None:
     #  - chat_type: one‑on‑one, group, or supergroup
 
     #  - messages: a flat, chronological list of Message objects, each with:
-    #    - user: the sender of the message (user or system)
+    #    - role: the sender of the message (user or system)
     #    - content: the message text
     #    - timestamp: the datetime when the message was sent
 
     #  - blocks: A list of message blocks. Each block is a list of temporally
     #            and contextually related messages, chunked according to time
     #            and token limits. Defaults to an empty list.
-
-    raw_path = Path(cfg.raw_json_filepath)
-    if not raw_path.is_file():
-        logger.error(f"Raw JSON export file not found: {raw_path}")
-        raise FileNotFoundError(f"File not found: {raw_path}")
-
-    raw_data = json.loads(raw_path.read_text(encoding="utf-8"))
-    chats: List[Chat] = []
-    target_name = cfg.target_name  # The name identifying "our" side of the conversation, renamed to "system" in the output.
-    date_limit = parse_date_limit(
-        cfg.date_limit
-    )  # Optional date limit for filtering messages.
-
     logger.info("Processing potential chats from export...")
-    for chat in raw_data.get("chats", {}).get("list", []):
+    for chat in raw_chats:
         contact_name = chat.get("name")
         # Skip chats without a name (deleted/anonymous)
         if not contact_name:
@@ -124,7 +162,7 @@ def main(cfg: DictConfig) -> None:
 
                 msgs.append(
                     Message(
-                        user="system"
+                        role="system"
                         if sender == target_name
                         else "user",  # Assign sender role based on target_name
                         content=content,
@@ -155,7 +193,7 @@ def main(cfg: DictConfig) -> None:
     logger.info(f"Built {len(chats)} usable chats from raw export.")
 
     # -------------------------------
-    # 3) Chunking into conversation blocks
+    # 4) Chunking into conversation blocks
     # -------------------------------
     # Split each Chat.messages into “blocks” so that each block:
     #   • Maintains temporal context (messages no more than time_threshold_sec apart)
@@ -239,7 +277,7 @@ def main(cfg: DictConfig) -> None:
     )
 
     # -------------------------------
-    # 4) Merge consecutive messages by sender within each block
+    # 5) Merge consecutive messages by sender within each block
     # -------------------------------
     # For each block in each Conversation, we:
     #   • Group consecutive messages from the same sender into one Message
@@ -256,29 +294,29 @@ def main(cfg: DictConfig) -> None:
             merged_messages: List[Message] = []
 
             first_msg = block[0]
-            current_sender = first_msg.user
+            current_sender = first_msg.role
             current_timestamp = first_msg.timestamp
             current_content = f"{delimiter} {first_msg.content.strip()}"
 
             for msg in block[1:]:
-                if msg.user == current_sender:
+                if msg.role == current_sender:
                     current_content += f"\n{delimiter} {msg.content.strip()}"
                 else:
                     merged_messages.append(
                         Message(
-                            user=current_sender,
+                            role=current_sender,
                             content=current_content,
                             timestamp=current_timestamp,
                         )
                     )
-                    current_sender = msg.user
+                    current_sender = msg.role
                     current_timestamp = msg.timestamp
                     current_content = f"{delimiter} {msg.content.strip()}"
 
             # Add last merged message
             merged_messages.append(
                 Message(
-                    user=current_sender,
+                    role=current_sender,
                     content=current_content,
                     timestamp=current_timestamp,
                 )
@@ -289,7 +327,7 @@ def main(cfg: DictConfig) -> None:
         convo.blocks = merged_blocks
 
     # -------------------------------
-    # 5) Log summary statistics
+    # 6) Log summary statistics
     # -------------------------------
     logger.info("Calculating final statistics...")
     chat_stats = calculate_chat_stats(chats, tokenizer)
@@ -326,7 +364,7 @@ def main(cfg: DictConfig) -> None:
     )
 
     # -------------------------------
-    # 6) Export: Processed Chats and Training Blocks as JSONL
+    # 7) Export: Processed Chats and Training Blocks as JSONL
     # -------------------------------
     processed_chats_filepath = Path(cfg.processed_chats_filepath)
     training_blocks_filepath = Path(cfg.processed_blocks_filepath)
@@ -344,25 +382,25 @@ def main(cfg: DictConfig) -> None:
             "w", encoding="utf-8"
         ) as processed_chats_file:
             for chat in chats:
-                # Prepare record for JSON serialization
                 chat_record = {
                     "contact_name": chat.contact_name,
                     "chat_type": chat.type,
                     "num_blocks": len(chat.blocks),
                     "blocks": [
-                        [  # List of messages within a block
-                            {
-                                "timestamp": msg.timestamp.isoformat(),
-                                "user": msg.user,  # Changed from 'user' to 'sender' for clarity
-                                "content": msg.content,
-                            }
-                            for msg in block
-                        ]
-                        for block in chat.blocks  # List of blocks
+                        {
+                            "messages": [
+                                {
+                                    "timestamp": msg.timestamp.isoformat(),
+                                    "role": msg.role,
+                                    "content": msg.content,
+                                }
+                                for msg in block
+                            ]
+                        }
+                        for block in chat.blocks
                     ],
                 }
-                # Write as JSON object per line (JSONL format)
-                # Use indent=2 for better human readability of this file
+                # Write one JSON object per line
                 json.dump(
                     chat_record, processed_chats_file, ensure_ascii=False, indent=2
                 )
@@ -382,21 +420,17 @@ def main(cfg: DictConfig) -> None:
         ) as training_blocks_file:
             for chat in chats:
                 for block in chat.blocks:
-                    # Prepare block record for JSON serialization
-                    block_record = [
-                        {
-                            "timestamp": msg.timestamp.isoformat(),
-                            "user": msg.user,
-                            "content": msg.content,
-                        }
-                        for msg in block
+                    # Build the flat list of role/content dicts
+                    messages = [
+                        {"role": msg.role, "content": msg.content} for msg in block
                     ]
-                    # Write as compact JSON object per line (JSONL format, no indent)
+                    # Wrap it in the "messages" field
+                    record = {"messages": messages}
+                    # Dump one JSON object per line
                     json.dump(
-                        block_record,
+                        record,
                         training_blocks_file,
                         ensure_ascii=False,
-                        indent=2,
                         separators=(",", ":"),
                     )
                     training_blocks_file.write("\n")
