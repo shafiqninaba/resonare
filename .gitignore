@@ -190,3 +190,10 @@ logs/**
 # uv
 uv.lock
 .python-version
+
+# Ignore .DS_Store files at all levels
+.DS_Store
+**/.DS_Store
+
+# Ignore the .hydra directory
+.hydra/
