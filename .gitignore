@@ -174,8 +174,10 @@ cython_debug/
 .pypirc
 
 data/**
-!data/**/
 !data/**/.gitkeep
+**/data/*
+!**/data/**/.gitkeep
+
 
 # Virtual environments
 .venv
