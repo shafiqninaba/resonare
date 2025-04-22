@@ -14,16 +14,17 @@ This script performs the following steps:
 3. From the loaded raw data, start building `Chat` objects containing `Message` objects
    filtering for textual content and applying the date limit if specified.
 
-3. Chunks messages within each chat into conversation 'blocks' based on time gaps
+4. Chunks messages within each chat into conversation 'blocks' based on time gaps
    (`convo_block_thereshold_secs`) and token counts (`min_tokens_per_block`,
    `max_tokens_per_block`). Discards blocks outside the token range. Discards conversations with no blocks.
 
-4. Merges consecutive messages from the same sender within each block,
+5. Merges consecutive messages from the same sender within each block,
    prefixing each original message line with a delimiter (`message_delimiter`).
+   Optionally prepends a system message to each block if specified in config.
 
-5. Calculates and logs summary statistics about the processed chats and blocks.
+6. Calculates and logs summary statistics about the processed chats and blocks.
 
-6. Exports the processed data into two JSON / JSONL files:
+7. Exports the processed data into two JSON / JSONL files:
    - One file containing full chat metadata and all associated blocks.
    - One file containing only the processed blocks, one block per line,
      suitable for ML training pipelines.
