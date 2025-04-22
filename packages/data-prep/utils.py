@@ -16,6 +16,9 @@ from typing import Dict, List, Optional, Union
 
 import tiktoken
 from loguru import logger
+from rich.console import Console
+from rich.table import Table
+from rich.text import Text
 
 # Import necessary tokenizer classes
 from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast
@@ -56,7 +59,7 @@ def load_tokenizer(model_name: str) -> AnyTokenizer:
             # "o200k_base" is a common TikToken encoding used by recent OpenAI models.
             # Adjust if your target model aligns better with a different encoding.
             tokenizer = tiktoken.get_encoding("o200k_base")
-            logger.info("Loaded tiktoken encoding: o200k_base")
+            logger.info("Loaded tiktoken tokenizer with encoding: o200k_base")
             return tokenizer
         except Exception as tiktoken_error:
             logger.error(
@@ -156,7 +159,8 @@ def calculate_chat_stats(
 
     # --- Calculate Duration Stats ---
     durations_minutes_list = [
-        (block[-1].timestamp - block[0].timestamp).total_seconds() / 60.0
+        (block[-1].timestamp - block[1].timestamp).total_seconds()
+        / 60.0  # first block is system message with no timestamp
         for block in all_blocks
         # block is guaranteed not empty here due to the filter when creating all_blocks
     ]
@@ -165,3 +169,20 @@ def calculate_chat_stats(
     stats["avg_duration_minutes_per_block"] = statistics.mean(durations_minutes_list)
 
     return stats
+
+
+def capture_table_output(table: Table, width: int = 150) -> Text:
+    """
+    Capture the ASCII representation of a Rich Table and return it as Text
+    for logging purposes.
+
+    Args:
+        table: The Rich Table object to capture.
+        width: The width of the console for formatting.
+    Returns:
+        A Text object containing the captured table output.
+    """
+    console = Console(width=width)
+    with console.capture() as capture:
+        console.print(table)
+    return Text.from_ansi(capture.get())

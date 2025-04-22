@@ -8,7 +8,7 @@ Provides a type-safe way to handle and preprocess chat data.
 """
 
 from datetime import datetime
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -19,12 +19,12 @@ class Message(BaseModel):
     Attributes:
         role: Identifier for the message sender ('system', 'user', 'assistant').
         content: Textual content of the message.
-        timestamp: Datetime object indicating when the message was sent.
+        timestamp: Datetime object indicating when the message was sent (optional)..
     """
 
     role: Literal["system", "user", "assistant"]
     content: str
-    timestamp: datetime
+    timestamp: Optional[datetime] = None
 
 
 class Chat(BaseModel):

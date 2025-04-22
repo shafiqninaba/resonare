@@ -7,16 +7,15 @@ hydra:
 # - Telegram allows exporting chats either as a single JSON file (often named result.json) 
 #   or as multiple JSON files, one per chat, stored in a directory.
 # - Use "mode" to switch between these two formats depending on your export type.
-raw_input:
-  mode: "file"            # Mode to specify how chat data is loaded:
+input:
+  mode: "dir"            # Mode to specify how chat data is loaded:
                           # - "file": Load a single JSON file (e.g., result.json).
                           # - "dir": Load multiple JSON files from a directory.
   file: "./data/raw/result.json"  # Path to the single JSON file containing all chats (e.g., Telegram export).
   dir:  "./data/raw/chats/"      # Path to the directory containing individual chat JSON files.
 
+processed_data_dir: "./data/processed/"  # - The processed data will be saved in this directory, with a unique identifier for each run.
 
-processed_chats_filepath: ./data/processed/chats.json         # Output path for processed full conversations (JSON)
-processed_blocks_filepath: ./data/processed/chat_blocks.jsonl  # Output path for conversation blocks (one block per line, JSONL)
 
 # Model settings
 # This is the model we're fine-tuning, so we use its tokenizer to count tokens for chunking.
@@ -26,6 +25,7 @@ model_id: "meta-llama/Llama-3.2-1B"  # HuggingFace model ID of the fine-tuning t
 
 # Chat processing options
 target_name: "Ren Hwa"  # Your name in the conversation; converted to "system" in output
+system_prompt: "You are Ren Hwa, a kind, sensitive and somewhat bubbly guy."  # System prompt for the model
 date_limit: None        # Optional: skip messages before this date (e.g., "2025-01-01")
 
 # Conversation block settings

@@ -30,6 +30,7 @@ This script performs the following steps:
 """
 
 import json
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -37,6 +38,8 @@ from typing import List, Optional
 import hydra
 from loguru import logger
 from omegaconf import DictConfig
+from rich import box
+from rich.console import Console
 from rich.progress import (  # TODO: implement rich progress bar for tasks
     BarColumn,
     Progress,
@@ -44,9 +47,15 @@ from rich.progress import (  # TODO: implement rich progress bar for tasks
     TimeElapsedColumn,
     TimeRemainingColumn,
 )
+from rich.table import Table
 
 from models import Chat, Message
-from utils import calculate_chat_stats, load_tokenizer, parse_date_limit
+from utils import (
+    calculate_chat_stats,
+    capture_table_output,
+    load_tokenizer,
+    parse_date_limit,
+)
 
 
 @hydra.main(config_path="conf", config_name="config")
@@ -71,7 +80,7 @@ def main(cfg: DictConfig) -> None:
     # result.json: {name: "adam", type: "personal_chat", messages: [{from: "adam", text_entities: [], sticker_emoji: ""}]
     logger.info("Loading chats from raw JSON data...")
 
-    mode = cfg.raw_input.mode.lower()
+    mode = cfg.input.mode.lower()
     if mode not in ["file", "dir"]:
         logger.error(
             f"Invalid raw_input.mode: {mode}; must be 'file' or 'dir', defaulting to 'file'"
@@ -80,7 +89,7 @@ def main(cfg: DictConfig) -> None:
 
     # Handle a single export file (e.g., "result.json")
     if mode == "file":
-        fp = Path(cfg.raw_input.file)
+        fp = Path(cfg.input.file)
         if not fp.is_file():
             logger.error(f"Raw JSON export file not found: {fp}")
             raise FileNotFoundError(fp)
@@ -94,7 +103,7 @@ def main(cfg: DictConfig) -> None:
 
     # Handle a directory of individual chat JSON files
     elif mode == "dir":
-        dd = Path(cfg.raw_input.dir)
+        dd = Path(cfg.input.dir)
         if not dd.is_dir():
             logger.error(f"Raw JSON directory not found: {dd}")
             raise FileNotFoundError(dd)
@@ -108,7 +117,7 @@ def main(cfg: DictConfig) -> None:
                 logger.error(f"Failed to load raw JSON export file {chat_file}: {e}")
                 continue
 
-    logger.info(f"Found {len(raw_chats)} chats to process")
+    logger.info(f"Loaded {len(raw_chats)} chats for processing")
 
     # --------------------------------------------
     # 3) Build Chat objects
@@ -126,9 +135,7 @@ def main(cfg: DictConfig) -> None:
     #  - blocks: A list of message blocks. Each block is a list of temporally
     #            and contextually related messages, chunked according to time
     #            and token limits. Defaults to an empty list.
-    logger.info(
-        "Processing chats and building chat objects from loaded raw JSON data..."
-    )
+    logger.info("Building chat objects from raw chats...")
 
     chats: List[Chat] = []
     target_name = cfg.target_name  # Name identifying "our" side of the conversation, renamed to "assistant" in the output
@@ -295,7 +302,8 @@ def main(cfg: DictConfig) -> None:
     #   • Prefix every line with the delimiter (e.g. '>>>')
     #   • Separate lines with '\n'
     #   • Keep the timestamp of the first message in each group
-
+    #   • Add a system message at the start of each block if specified
+    logger.info("Merging consecutive messages by sender within each block...")
     delimiter = cfg.message_delimiter.strip()
 
     for convo in chats:
@@ -341,6 +349,38 @@ def main(cfg: DictConfig) -> None:
 
         convo.blocks = merged_blocks
 
+    # Append the system message to each block
+    if cfg.system_prompt:
+        logger.info(
+            f"Prepending system message to each conversation block with content: {cfg.system_prompt}"
+        )
+        # Try to build the system message first
+        try:
+            system_message = Message(
+                role="system",
+                content=cfg.system_prompt,
+                timestamp=None,
+            )
+        except Exception as e:
+            logger.error(
+                f"Failed to create system message, skipping system prompts: {e}"
+            )
+            system_message = None
+
+        # 2) If creation succeeded, prepend to every block
+        if system_message:
+            for convo in chats:
+                for block in convo.blocks:
+                    try:
+                        block.insert(0, system_message)
+                    except Exception as e:
+                        # log and move on to the next block
+                        logger.warning(
+                            f"Could not prepend system message for chat '{convo.contact_name}', "
+                            f"block starting at {block[0].timestamp if block else 'unknown'}: {e}"
+                        )
+                        continue
+
     # -------------------------------
     # 6) Log summary statistics
     # -------------------------------
@@ -355,38 +395,53 @@ def main(cfg: DictConfig) -> None:
         chat_stats["block_breakdown"].items(), key=lambda item: item[1], reverse=True
     )[:k]
 
-    logger.info(
-        f"\n"
-        f"===== Chat Statistics =====\n"
-        f"Total Chats: {chat_stats['num_chats']}\n"
-        f"Total Blocks: {chat_stats['num_blocks']}\n\n"
-        f"===== Top Chats =====\n"
-        + "\n".join(
-            [
-                f"{rank}. {name}: {count} blocks"
-                for rank, (name, count) in enumerate(top_k_breakdown, start=1)
-            ]
-        )
-        + f"\n\n"
-        f"===== Token Statistics =====\n"
-        f"Min Tokens per Block: {chat_stats['min_tokens_per_block']}\n"
-        f"Max Tokens per Block: {chat_stats['max_tokens_per_block']}\n"
-        f"Avg Tokens per Block: {chat_stats['avg_tokens_per_block']:.2f}\n\n"
-        f"===== Duration Statistics =====\n"
-        f"Min Duration per Block (minutes): {chat_stats['min_duration_minutes_per_block']:.2f}\n"
-        f"Max Duration per Block (minutes): {chat_stats['max_duration_minutes_per_block']:.2f}\n"
-        f"Avg Duration per Block (minutes): {chat_stats['avg_duration_minutes_per_block']:.2f}\n"
+    stats_table = "\n"
+    stats_table += "*" * 36 + "\n"
+    stats_table += "*{:^34}*\n".format("Chat Statistics Summary")
+    stats_table += "*" * 36 + "\n"
+    stats_table += f"{'Metric':<25} | {'Value':>8}\n"
+    stats_table += "-" * 36 + "\n"
+    stats_table += f"{'Total Chats':<25} | {chat_stats['num_chats']:>8}\n"
+    stats_table += f"{'Total Blocks':<25} | {chat_stats['num_blocks']:>8}\n"
+    stats_table += (
+        f"{'Min Tokens/Block':<25} | {chat_stats['min_tokens_per_block']:>8}\n"
     )
+    stats_table += (
+        f"{'Max Tokens/Block':<25} | {chat_stats['max_tokens_per_block']:>8}\n"
+    )
+    stats_table += (
+        f"{'Avg Tokens/Block':<25} | {chat_stats['avg_tokens_per_block']:>8.2f}\n"
+    )
+    stats_table += f"{'Min Duration (min)':<25} | {chat_stats['min_duration_minutes_per_block']:>8.2f}\n"
+    stats_table += f"{'Max Duration (min)':<25} | {chat_stats['max_duration_minutes_per_block']:>8.2f}\n"
+    stats_table += f"{'Avg Duration (min)':<25} | {chat_stats['avg_duration_minutes_per_block']:>8.2f}\n"
+
+    stats_table += "\n"
+    stats_table += "*" * 36 + "\n"
+    stats_table += "*{:^34}*\n".format("Top Chats by Block Count")
+    stats_table += "*" * 36 + "\n"
+    for rank, (name, count) in enumerate(top_k_breakdown, start=1):
+        stats_table += f"{rank:>2}. {name:<28} {count:>5}\n"
+
+    logger.info("\n" + stats_table)
 
     # -------------------------------
     # 7) Export: Processed Chats and Training Blocks as JSONL
     # -------------------------------
-    processed_chats_filepath = Path(cfg.processed_chats_filepath)
-    training_blocks_filepath = Path(cfg.processed_blocks_filepath)
+    # Since we have no user feature for now, we treat each run as a separate run.
+    # We create a new directory for each run, and store the processed data there.
+    # UUID is used to create a unique directory name for each run.
 
-    # Ensure output directories exist
-    processed_chats_filepath.parent.mkdir(parents=True, exist_ok=True)
-    training_blocks_filepath.parent.mkdir(parents=True, exist_ok=True)
+    run_id = uuid.uuid4().hex  # Generate a fresh run UUID with no dashes
+
+    # Build the run‑specific folder
+    base_dir = Path(cfg.processed_data_dir)
+    run_dir = base_dir / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    # Define the file paths for processed chats and training blocks
+    processed_chats_filepath = run_dir / "chats.json"
+    training_blocks_filepath = run_dir / "train.jsonl"
 
     # 7.1) Export detailed chat data (metadata + blocks)
     logger.info(
@@ -404,7 +459,9 @@ def main(cfg: DictConfig) -> None:
                     {
                         "messages": [
                             {
-                                "timestamp": msg.timestamp.isoformat(),
+                                "timestamp": msg.timestamp.isoformat()
+                                if msg.timestamp
+                                else None,
                                 "role": msg.role,
                                 "content": msg.content,
                             }
