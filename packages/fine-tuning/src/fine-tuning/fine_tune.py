@@ -20,53 +20,49 @@ def main(cfg: DictConfig) -> None:
     logger = logging.getLogger("fine_tuning")
     logger.info("Starting fine-tuning script.")
 
-    # Initialise configs
-    max_seq_length = 2048
-    dtype = None
-    load_in_4bit = True
+    # Get configurations from hydra config
+    fine_tuning_config = cfg.fine_tuning
+    model_config = fine_tuning_config.model
+    lora_config = fine_tuning_config.lora
+    dataset_config = fine_tuning_config.dataset
+    training_config = fine_tuning_config.training
+    output_config = fine_tuning_config.output
 
     # Initialising the model and tokenizer
     model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name="unsloth/Llama-3.2-3B-Instruct",
-        max_seq_length=max_seq_length,
-        dtype=dtype,
-        load_in_4bit=load_in_4bit,
+        model_name=model_config.name,
+        max_seq_length=model_config.max_seq_length,
+        dtype=model_config.dtype,
+        load_in_4bit=model_config.load_in_4bit,
     )
-    logger.info("Model and tokenizer loaded successfully")
+    logger.info(f"Model: {model_config.name} loaded successfully")
 
     logger.info("Adding LoRA adapters to the model")
     # Add LoRA adapters to the model
     model = FastLanguageModel.get_peft_model(
         model,
-        r=16,
-        target_modules=[
-            "q_proj",
-            "k_proj",
-            "v_proj",
-            "o_proj",
-            "gate_proj",
-            "up_proj",
-            "down_proj",
-        ],
-        lora_alpha=16,
-        lora_dropout=0,
-        bias="none",
-        use_gradient_checkpointing="unsloth",
-        random_state=3407,
-        use_rslora=False,
-        loftq_config=None,
+        r=lora_config.r,
+        target_modules=lora_config.target_modules,
+        lora_alpha=lora_config.alpha,
+        lora_dropout=lora_config.dropout,
+        bias=lora_config.bias,
+        use_gradient_checkpointing=lora_config.use_gradient_checkpointing,
+        random_state=lora_config.random_state,
+        use_rslora=lora_config.use_rslora,
+        loftq_config=lora_config.loftq_config,
     )
+
     logger.info("LoRA adapters added successfully")
 
     ### DATA PREP ###
     logger.info("Starting data preparation")
     tokenizer = get_chat_template(
         tokenizer,
-        chat_template="llama-3.1",
+        chat_template=model_config.chat_template,
     )
 
     def formatting_prompts_func(examples):
-        convos = examples["conversations"]
+        convos = examples["messages"]
         texts = [
             tokenizer.apply_chat_template(
                 convo, tokenize=False, add_generation_prompt=False
@@ -77,8 +73,10 @@ def main(cfg: DictConfig) -> None:
             "text": texts,
         }
 
-    logger.info("Loading and processing dataset")
-    dataset = load_dataset("mlabonne/FineTome-100k", split="train")
+    logger.info(f"Loading and processing dataset from {dataset_config.path}")
+    dataset = load_dataset(
+        "json", data_files=dataset_config.path, split=dataset_config.split
+    )
     dataset = standardize_sharegpt(dataset)
     dataset = dataset.map(
         formatting_prompts_func,
@@ -92,25 +90,26 @@ def main(cfg: DictConfig) -> None:
         tokenizer=tokenizer,
         train_dataset=dataset,
         dataset_text_field="text",
-        max_seq_length=max_seq_length,
+        max_seq_length=model_config.max_seq_length,
         data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer),
-        dataset_num_proc=2,
-        packing=False,
+        dataset_num_proc=dataset_config.num_proc,
+        packing=training_config.packing,
         args=TrainingArguments(
-            per_device_train_batch_size=2,
-            gradient_accumulation_steps=4,
-            warmup_steps=5,
-            max_steps=60,
-            learning_rate=2e-4,
+            per_device_train_batch_size=training_config.per_device_train_batch_size,
+            gradient_accumulation_steps=training_config.gradient_accumulation_steps,
+            warmup_steps=training_config.warmup_steps,
+            num_train_epochs=1,
+            # max_steps=training_config.max_steps,
+            learning_rate=training_config.learning_rate,
             fp16=not is_bfloat16_supported(),
             bf16=is_bfloat16_supported(),
             logging_steps=1,
             optim="adamw_8bit",
-            weight_decay=0.01,
-            lr_scheduler_type="linear",
-            seed=3407,
-            output_dir="outputs",
-            report_to="none",
+            weight_decay=training_config.weight_decay,
+            lr_scheduler_type=training_config.lr_scheduler_type,
+            seed=training_config.seed,
+            output_dir=output_config.dir,
+            report_to=output_config.report_to,
         ),
     )
 
@@ -144,14 +143,14 @@ def main(cfg: DictConfig) -> None:
 
     logger.info("Saving model artifacts...")
     # Saving the final model as LoRA adapters
-    model.save_pretrained("model_output/lora_model")  # Local saving
-    tokenizer.save_pretrained("model_output/lora_model")
+    model.save_pretrained(output_config.lora_model_path)
+    tokenizer.save_pretrained(output_config.lora_model_path)
 
     # Save the model in 16bit merged format for vLLM
     model.save_pretrained_merged(
-        "model_output/model",
+        output_config.merged_model_path,
         tokenizer,
-        save_method="merged_16bit",
+        save_method=output_config.merged_save_method,
     )
     logger.info("Model artifacts saved successfully")
 

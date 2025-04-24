@@ -1,2 +1,3 @@
 defaults:
   - logging: logging
+  - fine_tuning: fine_tuning
