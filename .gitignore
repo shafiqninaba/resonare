@@ -173,15 +173,32 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-# Data
-data/**
-!data/**/
-!data/**/.gitkeep
+# Ignore everything in any data/ folder
+**/data/**
 
-# Logs
+# But do not ignore these specific folders and .gitkeep files
+!**/data/
+!**/data/**/
+!**/data/**/.gitkeep
+
+
+# Virtual environments
+.venv
+
+
 logs/**
 !logs/**/
 !logs/**/.gitkeep
 
-# UV
+.vscode/
+
+# uv
 uv.lock
+.python-version
+
+# Ignore .DS_Store files at all levels
+.DS_Store
+**/.DS_Store
+
+# Ignore the .hydra directory
+.hydra/
