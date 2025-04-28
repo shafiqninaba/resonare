@@ -1,17 +1,30 @@
-# Use Python 3.13 as the base image
-FROM python:3.13.3-slim
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 
-# Set the working directory inside the container
+# Change the working directory to the `app` directory
 WORKDIR /app
 
-# Copy only the pyproject.toml and uv.lock files first to leverage Docker caching
-COPY pyproject.toml uv.lock /app/
+# Enable bytecode compilation
+ENV UV_COMPILE_BYTECODE=1
 
-# Install dependencies using uv
-RUN pip install uv && uv install --no-cache-dir
+# Changing the default UV_LINK_MODE silences warnings about not being able to use hard links since the cache and sync target are on separate file systems.
+ENV UV_LINK_MODE=copy 
 
-# Copy the rest of the project files into the container
-COPY . /app
+# Install dependencies
+# Ren Hwa: by right, uv lockfile should be included in the repo. For nowm, we just use the toml file to install the dependencies.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --no-install-project
 
-# Set the default command to run main.py
+# Copy the project into the image
+ADD . /app
+
+# Sync the project
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-dev
+
+# Place executables in the environment at the front of the path
+ENV PATH="/app/.venv/bin:$PATH"
+
 CMD ["python", "main.py"]
+
+
