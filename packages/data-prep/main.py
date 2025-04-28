@@ -50,8 +50,8 @@ from rich.progress import (  # TODO: implement rich progress bar for tasks
 )
 from rich.table import Table
 
-from models import Chat, Message
-from utils import (
+from src.models import Chat, Message
+from src.utils import (
     calculate_chat_stats,
     capture_table_output,
     load_tokenizer,

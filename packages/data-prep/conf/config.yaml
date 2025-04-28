@@ -8,7 +8,7 @@ hydra:
 #   or as multiple JSON files, one per chat, stored in a directory.
 # - Use "mode" to switch between these two formats depending on your export type.
 input:
-  mode: "dir"            # Mode to specify how chat data is loaded:
+  mode: "file"            # Mode to specify how chat data is loaded:
                           # - "file": Load a single JSON file (e.g., result.json).
                           # - "dir": Load multiple JSON files from a directory.
   file: "./data/raw/result.json"  # Path to the single JSON file containing all chats (e.g., Telegram export).

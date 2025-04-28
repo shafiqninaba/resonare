@@ -23,7 +23,7 @@ from rich.text import Text
 # Import necessary tokenizer classes
 from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast
 
-from models import Chat
+from .models import Chat
 
 # Define type alias for tokenizer union
 AnyTokenizer = Union[PreTrainedTokenizer, PreTrainedTokenizerFast, tiktoken.Encoding]
