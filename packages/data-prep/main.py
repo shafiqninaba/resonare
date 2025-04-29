@@ -213,7 +213,7 @@ def main(cfg: DictConfig) -> None:
         try:
             s3.put_object(
                 Bucket=cfg.output.s3_bucket,
-                Key=f"{run_id}/raw.json",
+                Key=f"{run_id}/data/raw.json",
                 Body=json.dumps(raw_chats, ensure_ascii=False, indent=2),
                 Metadata={
                     "uuid": run_id,
@@ -595,12 +595,12 @@ def main(cfg: DictConfig) -> None:
         try:
             s3.put_object(
                 Bucket=cfg.output.s3_bucket,
-                Key=f"{run_id}/chats.json",
+                Key=f"{run_id}/data/processed.json",
                 Body=json.dumps(chat_records, ensure_ascii=False, indent=2),
                 Metadata=metadata_dict,
             )
             logger.info(
-                f"Successfully uploaded chats.json to s3://{cfg.output.s3_bucket}/{run_id}/chats.json"
+                f"Successfully uploaded chats.json to s3://{cfg.output.s3_bucket}/{run_id}/data/processed.json"
             )
         except Exception as e:
             logger.error(f"Failed to upload chats.json to S3: {e}")
@@ -630,12 +630,12 @@ def main(cfg: DictConfig) -> None:
         try:
             s3.put_object(
                 Bucket=cfg.output.s3_bucket,
-                Key=f"{run_id}/train.jsonl",
+                Key=f"{run_id}/data/train.jsonl",
                 Body="\n".join(training_block_lines),
                 Metadata=metadata_dict,
             )
             logger.info(
-                f"Successfully uploaded train.jsonl to s3://{cfg.output.s3_bucket}/{run_id}/train.jsonl"
+                f"Successfully uploaded train.jsonl to s3://{cfg.output.s3_bucket}/{run_id}/data/train.jsonl"
             )
         except Exception as e:
             logger.error(f"Failed to upload train.jsonl to S3: {e}")
