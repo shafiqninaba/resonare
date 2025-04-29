@@ -5,40 +5,48 @@ sessions, chunked by time and token limits, suitable for further analysis or
 LLM fine-tuning.
 
 This script performs the following steps:
+0. Sets up logging configuration using either standard logging configuration file or Loguru (more pythonic).
+
 1. Loads a model specific tokenizer using HuggingFace Transformers (fallback to TikToken).
 
-2. Loads the raw JSON export from a single file or a directory of files.
+2. Setup S3 client for uploading processed data if needed.
+
+3. Loads the raw JSON export from a single file or a directory of files.
     - If a file is specified, it processes that single JSON file, which should contain a list of chats.
     - If a directory is specified, it processes all JSON files within it, which should each contain a single chat.
 
-3. From the loaded raw data, start building `Chat` objects containing `Message` objects
+4. From the loaded raw data, start building `Chat` objects containing `Message` objects
    filtering for textual content and applying the date limit if specified.
 
-4. Chunks messages within each chat into conversation 'blocks' based on time gaps
+5. Chunks messages within each chat into conversation 'blocks' based on time gaps
    (`convo_block_thereshold_secs`) and token counts (`min_tokens_per_block`,
    `max_tokens_per_block`). Discards blocks outside the token range. Discards conversations with no blocks.
 
-5. Merges consecutive messages from the same sender within each block,
+6. Merges consecutive messages from the same sender within each block,
    prefixing each original message line with a delimiter (`message_delimiter`).
    Optionally prepends a system message to each block if specified in config.
 
-6. Calculates and logs summary statistics about the processed chats and blocks.
+7. Calculates and logs summary statistics about the processed chats and blocks.
 
-7. Exports the processed data into two JSON / JSONL files:
+8. Exports the processed data into two JSON / JSONL files:
    - One file containing full chat metadata and all associated blocks.
    - One file containing only the processed blocks, one block per line,
      suitable for ML training pipelines.
 """
 
 import json
+import logging
+import os
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
+import boto3
 import hydra
+from botocore.exceptions import ClientError, NoCredentialsError
 from loguru import logger
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from rich import box
 from rich.console import Console
 from rich.progress import (  # TODO: implement rich progress bar for tasks
@@ -56,11 +64,34 @@ from src.utils import (
     capture_table_output,
     load_tokenizer,
     parse_date_limit,
+    setup_loguru_logging,
+    setup_standard_logging,
 )
 
 
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg: DictConfig) -> None:
+    # ---------------------
+    # 0) Set up logging configuration
+    # ---------------------
+    # Get absolute path to the directory of main.py
+    # We assume config folder containing logging conf is always in the same directory as main.py
+    # Avoid issues when running main.py from different directories
+    project_root = Path(__file__).parent
+
+    logger = logging.getLogger(__name__)
+    logger.info("Setting up logging configuration.")
+
+    setup_standard_logging(
+        logging_config_path=os.path.join(
+            project_root,
+            "conf",
+            "logging.yaml",
+        ),
+    )
+
+    # setup_loguru_logging(logs_dir=os.path.join(project_root, "logs"))
+
     # ---------------------
     # 1) Tokenizer loading
     # ---------------------
@@ -71,8 +102,40 @@ def main(cfg: DictConfig) -> None:
     logger.info(f"Loading tokenizer for model {cfg.model_id} for token counting...")
     tokenizer = load_tokenizer(model_name=cfg.model_id)
 
+    # ---------------------
+    # 2) Setup S3 client for uploading processed data if needed
+    # ---------------------
+    s3 = None
+    if "s3" in cfg.output.modes:
+        logger.info("Setting up S3 client for uploading processed data...")
+
+        try:
+            # Read AWS credentials from environment variables
+            AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID")
+            AWS_SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+
+            if not AWS_ACCESS_KEY or not AWS_SECRET_KEY:
+                raise EnvironmentError(
+                    "Missing AWS credentials in environment variables."
+                )
+
+            # Create S3 client
+            s3 = boto3.client(
+                "s3",
+                aws_access_key_id=AWS_ACCESS_KEY,
+                aws_secret_access_key=AWS_SECRET_KEY,
+                region_name=cfg.output.s3_region,
+            )
+            logger.info("S3 client setup successful.")
+
+        except Exception as e:
+            logger.error(
+                f"Failed to set up S3 client: {e}, s3 upload will be skipped, only local export will be used."
+            )
+            cfg.output.modes = ["local"]
+
     # --------------------------------------------
-    # 2) Load raw data from JSON data
+    # 3.1) Load and upload raw data from JSON data
     # --------------------------------------------
     # We load the raw JSON export from a single file or a directory of files.
     # if a file is specified, it processes that single JSON file, which should contain a list of individual chats.
@@ -120,8 +183,51 @@ def main(cfg: DictConfig) -> None:
 
     logger.info(f"Loaded {len(raw_chats)} chats for processing")
 
+    # -------------------------------
+    # 3.2) Export: Raw Chats
+    # -------------------------------
+    # Since we have no user feature for now, we treat each run as a separate run.
+    # We create a new directory for each run, and store the processed data there.
+    # UUID is used to create a unique directory name for each run.
+
+    run_id = uuid.uuid4().hex  # Generate a fresh run UUID with no dashes
+
+    # Define base paths
+    base_dir = Path(cfg.output.local_dir)
+    run_dir = base_dir / run_id
+
+    # Save locally if configured
+    if "local" in cfg.output.modes:
+        logger.info(f"Saving raw chats locally to {run_dir}...")
+
+        run_dir.mkdir(parents=True, exist_ok=True)
+        raw_chats_filepath = run_dir / "raw.json"
+
+        with raw_chats_filepath.open("w", encoding="utf-8") as f:
+            json.dump(raw_chats, f, ensure_ascii=False, indent=2)
+
+    # Upload to S3 if configured
+    if "s3" in cfg.output.modes:
+        logger.info(f"Uploading raw chats to S3 bucket {cfg.output.s3_bucket}...")
+
+        try:
+            s3.put_object(
+                Bucket=cfg.output.s3_bucket,
+                Key=f"{run_id}/raw.json",
+                Body=json.dumps(raw_chats, ensure_ascii=False, indent=2),
+                Metadata={
+                    "uuid": run_id,
+                },
+            )
+            logger.info(
+                f"Successfully uploaded raw chats to s3://{cfg.output.s3_bucket}/{run_id}/raw.json"
+            )
+        except Exception as e:
+            logger.error(f"Failed to upload raw chats to S3: {e}")
+            raise
+
     # --------------------------------------------
-    # 3) Build Chat objects
+    # 4) Build Chat objects
     # --------------------------------------------
     # We assemble a list of Chat instances, each representing a chat:
     #  - contact_name: the person or group name
@@ -212,7 +318,7 @@ def main(cfg: DictConfig) -> None:
     logger.info(f"Built {len(chats)} usable chat objects.")
 
     # -------------------------------
-    # 4) Chunking each chat into conversation 'blocks'
+    # 5) Chunking each chat into conversation 'blocks'
     # -------------------------------
     # Split each Chat.messages into “blocks” so that each block:
     #   • Maintains temporal context (messages no more than time_threshold_sec apart)
@@ -296,7 +402,7 @@ def main(cfg: DictConfig) -> None:
     )
 
     # -------------------------------
-    # 5) Merge consecutive messages by sender within each block
+    # 6) Merge consecutive messages by sender within each block
     # -------------------------------
     # For each block in each Conversation, we:
     #   • Group consecutive messages from the same sender into one Message
@@ -383,7 +489,7 @@ def main(cfg: DictConfig) -> None:
                         continue
 
     # -------------------------------
-    # 6) Log summary statistics
+    # 7) Log summary statistics
     # -------------------------------
     logger.info("Calculating statistics of processed chats...")
     chat_stats = calculate_chat_stats(chats, tokenizer)
@@ -427,92 +533,112 @@ def main(cfg: DictConfig) -> None:
     logger.info("\n" + stats_table)
 
     # -------------------------------
-    # 7) Export: Processed Chats and Training Blocks as JSONL
+    # 8) Export: Processed Chats and Training Blocks
     # -------------------------------
-    # Since we have no user feature for now, we treat each run as a separate run.
-    # We create a new directory for each run, and store the processed data there.
-    # UUID is used to create a unique directory name for each run.
+    logger.info("Exporting processed chats and training blocks...")
 
-    run_id = uuid.uuid4().hex  # Generate a fresh run UUID with no dashes
-
-    # Build the run‑specific folder
-    base_dir = Path(cfg.processed_data_dir)
-    run_dir = base_dir / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
-
-    # Define the file paths for processed chats and training blocks
-    processed_chats_filepath = run_dir / "chats.json"
+    # Define paths
+    processed_chats_filepath = run_dir / "processed.json"
     training_blocks_filepath = run_dir / "train.jsonl"
 
-    # 7.1) Export detailed chat data (metadata + blocks)
-    logger.info(
-        f"Exporting processed chat data with metadata to: {processed_chats_filepath}"
-    )
-    try:
-        # Collect all chat records into a list
-        chat_records = []
-        for chat in chats:
-            chat_record = {
-                "contact_name": chat.contact_name,
-                "chat_type": chat.type,
-                "num_blocks": len(chat.blocks),
-                "blocks": [
-                    {
-                        "messages": [
-                            {
-                                "timestamp": msg.timestamp.isoformat()
-                                if msg.timestamp
-                                else None,
-                                "role": msg.role,
-                                "content": msg.content,
-                            }
-                            for msg in block
-                        ]
-                    }
-                    for block in chat.blocks
-                ],
+    # --- Manually Define Metadata ---
+    metadata_dict = {
+        "uuid": run_id,
+        "model_id": cfg.model_id,
+        "target_name": cfg.target_name,
+        "system_prompt": cfg.system_prompt,
+        "date_limit": str(cfg.date_limit) if cfg.date_limit else "None",
+        "convo_block_thereshold_secs": str(cfg.convo_block_thereshold_secs),
+        "min_tokens_per_block": str(cfg.min_tokens_per_block),
+        "max_tokens_per_block": str(cfg.max_tokens_per_block),
+        "message_delimiter": cfg.message_delimiter,
+    }
+    metadata_dict.update(
+        {f"stats_{k}": str(v) for k, v in chat_stats.items()}
+    )  # add stats to metadata
+
+    # 8.1) Prepare chat records
+    logger.info("Preparing processed chat records...")
+    chat_records = []
+    for chat in chats:
+        chat_record = {
+            "contact_name": chat.contact_name,
+            "chat_type": chat.type,
+            "num_blocks": len(chat.blocks),
+            "blocks": [
+                {
+                    "messages": [
+                        {
+                            "timestamp": msg.timestamp.isoformat()
+                            if msg.timestamp
+                            else None,
+                            "role": msg.role,
+                            "content": msg.content,
+                        }
+                        for msg in block
+                    ]
+                }
+                for block in chat.blocks
+            ],
+        }
+        chat_records.append(chat_record)
+
+    # 8.2) Save processed chats locally if needed
+    if "local" in cfg.output.modes:
+        logger.info(f"Saving processed chats locally to {processed_chats_filepath}...")
+        with processed_chats_filepath.open("w", encoding="utf-8") as f:
+            json.dump(chat_records, f, ensure_ascii=False, indent=2)
+
+    # 8.3) Upload processed chats to S3 if needed
+    if "s3" in cfg.output.modes and s3 is not None:
+        logger.info(f"Uploading processed chats to S3 bucket {cfg.output.s3_bucket}...")
+        try:
+            s3.put_object(
+                Bucket=cfg.output.s3_bucket,
+                Key=f"{run_id}/chats.json",
+                Body=json.dumps(chat_records, ensure_ascii=False, indent=2),
+                Metadata=metadata_dict,
+            )
+            logger.info(
+                f"Successfully uploaded chats.json to s3://{cfg.output.s3_bucket}/{run_id}/chats.json"
+            )
+        except Exception as e:
+            logger.error(f"Failed to upload chats.json to S3: {e}")
+
+    # 8.4) Save training blocks locally if needed
+    logger.info("Preparing training blocks...")
+    training_block_lines = []
+    for chat in chats:
+        for block in chat.blocks:
+            record = {
+                "messages": [
+                    {"role": msg.role, "content": msg.content} for msg in block
+                ]
             }
-            chat_records.append(chat_record)
+            training_block_lines.append(
+                json.dumps(record, ensure_ascii=False, separators=(",", ":"))
+            )
 
-        # Write the list of chat records as a single JSON object
-        with processed_chats_filepath.open(
-            "w", encoding="utf-8"
-        ) as processed_chats_file:
-            json.dump(chat_records, processed_chats_file, ensure_ascii=False, indent=2)
+    if "local" in cfg.output.modes:
+        logger.info(f"Saving training blocks locally to {training_blocks_filepath}...")
+        with training_blocks_filepath.open("w", encoding="utf-8") as f:
+            f.write("\n".join(training_block_lines))
 
-    except Exception as e:
-        logger.error(f"An unexpected error occurred during chat metadata export: {e}")
-        raise
-
-    # 7.2) Export blocks only (one block per line, suitable for training)
-    logger.info(
-        f"Exporting training-ready blocks (JSONL) to: {training_blocks_filepath}"
-    )
-    try:
-        with training_blocks_filepath.open(
-            "w", encoding="utf-8"
-        ) as training_blocks_file:
-            for chat in chats:
-                for block in chat.blocks:
-                    # TODO: add comments here for expeceted data format, and common keys like role, content
-                    # Build the flat list of role/content dicts
-                    record = {
-                        "messages": [
-                            {"role": msg.role, "content": msg.content} for msg in block
-                        ]
-                    }
-                    # Dump one JSON object per line
-                    json.dump(
-                        record,
-                        training_blocks_file,
-                        ensure_ascii=False,
-                        separators=(",", ":"),
-                    )
-                    training_blocks_file.write("\n")
-
-    except Exception as e:
-        logger.error(f"An unexpected error occurred during training block export: {e}")
-        raise
+    # 8.5) Upload training blocks to S3 if needed
+    if "s3" in cfg.output.modes and s3 is not None:
+        logger.info(f"Uploading training blocks to S3 bucket {cfg.output.s3_bucket}...")
+        try:
+            s3.put_object(
+                Bucket=cfg.output.s3_bucket,
+                Key=f"{run_id}/train.jsonl",
+                Body="\n".join(training_block_lines),
+                Metadata=metadata_dict,
+            )
+            logger.info(
+                f"Successfully uploaded train.jsonl to s3://{cfg.output.s3_bucket}/{run_id}/train.jsonl"
+            )
+        except Exception as e:
+            logger.error(f"Failed to upload train.jsonl to S3: {e}")
 
 
 if __name__ == "__main__":

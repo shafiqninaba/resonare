@@ -14,7 +14,11 @@ input:
   file: "./data/raw/result.json"  # Path to the single JSON file containing all chats (e.g., Telegram export).
   dir:  "./data/raw/chats/"      # Path to the directory containing individual chat JSON files.
 
-processed_data_dir: "./data/processed/"  # - The processed data will be saved in this directory, with a unique identifier for each run.
+output:
+  modes: ["local", "s3"]    # Choose one or multiple modes: ["local"], ["s3"], ["local", "s3"]
+  local_dir: "./data/processed/"    # Local output directory
+  s3_bucket: "resonsare-test-bucket"    # S3 bucket name
+  s3_region: "ap-southeast-1"           # AWS region
 
 
 # Model settings
