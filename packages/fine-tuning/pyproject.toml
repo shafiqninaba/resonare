@@ -17,7 +17,8 @@ dependencies = [
   "trl>=0.15.2",
   "unsloth>=2025.3.19",
   "triton==3.2.0; sys_platform == 'linux'",
-  "xformers"
+  "xformers",
+  "python-dotenv>=1.1.0"
 ]
 description = "Fine tuning service for Resonare"
 name = "fine-tuning"
