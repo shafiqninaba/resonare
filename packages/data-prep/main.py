@@ -110,20 +110,22 @@ def main(cfg: DictConfig) -> None:
         logger.info("Setting up S3 client for uploading processed data...")
 
         try:
-            # Read AWS credentials from environment variables
-            AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID")
-            AWS_SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+            # # Read AWS credentials from environment variables
+            # Note: boto3 looks for AWS credentials in serveal locations. https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html
 
-            if not AWS_ACCESS_KEY or not AWS_SECRET_KEY:
-                raise EnvironmentError(
-                    "Missing AWS credentials in environment variables."
-                )
+            # AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID")
+            # AWS_SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+
+            # if not AWS_ACCESS_KEY or not AWS_SECRET_KEY:
+            #     raise EnvironmentError(
+            #         "Missing AWS credentials in environment variables."
+            #     )
 
             # Create S3 client
             s3 = boto3.client(
                 "s3",
-                aws_access_key_id=AWS_ACCESS_KEY,
-                aws_secret_access_key=AWS_SECRET_KEY,
+                # aws_access_key_id=AWS_ACCESS_KEY,
+                # aws_secret_access_key=AWS_SECRET_KEY,
                 region_name=cfg.output.s3_region,
             )
             logger.info("S3 client setup successful.")
