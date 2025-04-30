@@ -1,5 +1,4 @@
 dataset:
-  path: data/train.jsonl
   split: train
   num_proc: 2
 
@@ -42,6 +41,3 @@ training:
 output:
   dir: outputs
   report_to: none
-  lora_model_path: model_output/lora_model
-  merged_model_path: model_output/model
-  merged_save_method: merged_16bit

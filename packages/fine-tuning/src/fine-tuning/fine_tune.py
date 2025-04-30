@@ -21,12 +21,11 @@ def main(cfg: DictConfig) -> None:
     logger.info("Starting fine-tuning script.")
 
     # Get configurations from hydra config
-    fine_tuning_config = cfg.fine_tuning
-    model_config = fine_tuning_config.model
-    lora_config = fine_tuning_config.lora
-    dataset_config = fine_tuning_config.dataset
-    training_config = fine_tuning_config.training
-    output_config = fine_tuning_config.output
+    model_config = cfg.model
+    lora_config = cfg.lora
+    dataset_config = cfg.dataset
+    training_config = cfg.training
+    output_config = cfg.output
 
     # Initialising the model and tokenizer
     model, tokenizer = FastLanguageModel.from_pretrained(
