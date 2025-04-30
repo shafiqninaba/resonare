@@ -31,3 +31,8 @@ logging:
       level: DEBUG
       handlers: [console, file]
       propagate: no
+
+    fine_tuning_api:
+      level: DEBUG
+      handlers: [console, file]
+      propagate: no

@@ -1,203 +1,220 @@
-from unsloth import FastLanguageModel
-import torch
-from unsloth.chat_templates import get_chat_template
-from datasets import load_dataset
-from trl import SFTTrainer
-from transformers import TrainingArguments, DataCollatorForSeq2Seq
-from unsloth import is_bfloat16_supported
-from unsloth.chat_templates import standardize_sharegpt
-from omegaconf import DictConfig
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import uvicorn
 import hydra
-from src.general_utils import setup_logger, setup_s3_client, upload_directory_to_s3
+from src.general_utils import setup_logger, setup_s3_client
+from src.fine_tune import run_fine_tuning
 import os
-import tempfile
 from dotenv import load_dotenv
+from contextlib import asynccontextmanager
+from enum import Enum
+import asyncio
+from datetime import datetime
+from typing import Dict, Optional
+from omegaconf import OmegaConf
+
+# Load environment variables
+load_dotenv()
+
+# Set up logger
+logger = setup_logger("fine_tuning_api")
 
 
-@hydra.main(version_base=None, config_path="conf", config_name="config")
-def main(cfg: DictConfig) -> None:
-    load_dotenv()
+class JobStatus(str, Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
-    # Set up logger
-    logger = setup_logger("fine_tuning")
-    logger.info("Starting fine-tuning script.")
 
-    logger.info(cfg)
-    # Get configurations from hydra config
-    model_config = cfg.model
-    lora_config = cfg.lora
-    dataset_config = cfg.dataset
-    training_config = cfg.training
-    output_config = cfg.output
+class JobInfo(BaseModel):
+    run_id: str
+    status: JobStatus
+    position_in_queue: Optional[int] = None
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    error: Optional[str] = None
 
-    # Initialising the model and tokenizer
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=model_config.name,
-        max_seq_length=model_config.max_seq_length,
-        dtype=model_config.dtype,
-        load_in_4bit=model_config.load_in_4bit,
-    )
-    logger.info(f"Model: {model_config.name} loaded successfully")
 
-    logger.info("Adding LoRA adapters to the model")
-    # Add LoRA adapters to the model
-    model = FastLanguageModel.get_peft_model(
-        model,
-        r=lora_config.r,
-        target_modules=lora_config.target_modules,
-        lora_alpha=lora_config.alpha,
-        lora_dropout=lora_config.dropout,
-        bias=lora_config.bias,
-        use_gradient_checkpointing=lora_config.use_gradient_checkpointing,
-        random_state=lora_config.random_state,
-        use_rslora=lora_config.use_rslora,
-        loftq_config=lora_config.loftq_config,
-    )
+# Dictionary to store connections and resources
+resources = {}
 
-    logger.info("LoRA adapters added successfully")
+# Create a job queue and job status tracking
+job_queue = asyncio.Queue()
+job_status: Dict[str, JobInfo] = {}
+job_running = False
 
-    ### DATA PREP ###
-    logger.info("Starting data preparation")
-    tokenizer = get_chat_template(
-        tokenizer,
-        chat_template=model_config.chat_template,
-    )
 
-    def formatting_prompts_func(examples):
-        convos = examples["messages"]
-        texts = [
-            tokenizer.apply_chat_template(
-                convo, tokenize=False, add_generation_prompt=False
-            )
-            for convo in convos
-        ]
-        return {
-            "text": texts,
-        }
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Setup resources on startup
+    logger.info("Setting up S3 client on application startup")
+    resources["s3_client"] = setup_s3_client()
+    resources["s3_bucket"] = os.getenv("AWS_S3_BUCKET")
+    logger.info(f"S3 client initialized, using bucket: {resources['s3_bucket']}")
 
-    logger.info(f"Loading and processing dataset from {dataset_config.path}")
+    # Start the job processor
+    job_processor_task = asyncio.create_task(process_job_queue())
+    resources["job_processor"] = job_processor_task
+    logger.info("Job processor started")
 
-    ### DOWNLOAD DATASET FROM S3 ###
+    yield
 
-    s3 = setup_s3_client()
-    AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
-    run_id = "b28c5ef19549486c9f09544ea1428162"
+    # Clean up resources on shutdown
+    if "job_processor" in resources:
+        resources["job_processor"].cancel()
+        logger.info("Job processor cancelled")
 
-    # Define the object key (path in S3)
-    object_key = f"{run_id}/data/train.jsonl"
+    logger.info("Cleaning up resources")
+    resources.clear()
+    logger.info("Resources cleaned up")
 
-    # Create a temporary directory
-    with tempfile.TemporaryDirectory() as temp_dir:
-        # Extract filename from object_key and create path in temp dir
-        filename = os.path.basename(object_key)
-        local_file_path = os.path.join(temp_dir, filename)
 
+async def process_job_queue():
+    """Worker process that pulls jobs from queue and runs them one at a time"""
+    global job_running
+
+    while True:
         try:
-            # Download the file
-            s3.download_file(AWS_S3_BUCKET, object_key, local_file_path)
-            logger.info(f"Successfully downloaded {object_key} to {local_file_path}")
-            dataset = load_dataset(
-                "json", data_files=local_file_path, split=dataset_config.split
-            )
+            run_id = await job_queue.get()
+            job_info = job_status[run_id]
+            job_info.status = JobStatus.RUNNING
+            job_info.position_in_queue = None
+            job_info.started_at = datetime.now()
+            job_running = True
 
+            # Update queue positions for remaining jobs
+            update_queue_positions()
+
+            logger.info(f"Starting fine-tuning for job {run_id} from queue")
+
+            # Run the fine-tuning task
+            try:
+                # Run synchronously to block the queue processing until complete
+                await asyncio.to_thread(run_fine_tuning, run_id, resources)
+                job_info.status = JobStatus.COMPLETED
+                job_info.completed_at = datetime.now()
+                logger.info(f"Job {run_id} completed successfully")
+            except Exception as e:
+                job_info.status = JobStatus.FAILED
+                job_info.error = str(e)
+                job_info.completed_at = datetime.now()
+                logger.error(f"Job {run_id} failed: {str(e)}")
+            finally:
+                job_running = False
+                job_queue.task_done()
+        except asyncio.CancelledError:
+            logger.info("Job processor task was cancelled")
+            break
         except Exception as e:
-            logger.error(f"Error downloading file: {e}")
+            logger.error(f"Error in job processor: {str(e)}")
+            await asyncio.sleep(5)  # Wait before retrying
 
-        dataset = standardize_sharegpt(dataset)
-        dataset = dataset.map(
-            formatting_prompts_func,
-            batched=True,
-        )
-        logger.info(f"Dataset processed. Size: {len(dataset)} samples")
 
-        logger.info("Initializing trainer")
-        trainer = SFTTrainer(
-            model=model,
-            tokenizer=tokenizer,
-            train_dataset=dataset,
-            dataset_text_field="text",
-            max_seq_length=model_config.max_seq_length,
-            data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer),
-            dataset_num_proc=dataset_config.num_proc,
-            packing=training_config.packing,
-            args=TrainingArguments(
-                per_device_train_batch_size=training_config.per_device_train_batch_size,
-                gradient_accumulation_steps=training_config.gradient_accumulation_steps,
-                warmup_steps=training_config.warmup_steps,
-                # num_train_epochs=1,
-                max_steps=training_config.max_steps,
-                learning_rate=training_config.learning_rate,
-                fp16=not is_bfloat16_supported(),
-                bf16=is_bfloat16_supported(),
-                logging_steps=1,
-                optim="adamw_8bit",
-                weight_decay=training_config.weight_decay,
-                lr_scheduler_type=training_config.lr_scheduler_type,
-                seed=training_config.seed,
-                output_dir=output_config.dir,
-                report_to=output_config.report_to,
-            ),
-        )
+def update_queue_positions():
+    """Update position in queue for all queued jobs"""
+    queued_jobs = [
+        job_id for job_id, info in job_status.items() if info.status == JobStatus.QUEUED
+    ]
 
-        logger.info("Starting training...")
+    for i, job_id in enumerate(queued_jobs):
+        job_status[job_id].position_in_queue = i + 1
 
-        # Show current memory stats
-        gpu_stats = torch.cuda.get_device_properties(0)
-        start_gpu_memory = round(
-            torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3
-        )
-        max_memory = round(gpu_stats.total_memory / 1024 / 1024 / 1024, 3)
-        logger.debug(f"GPU = {gpu_stats.name}. Max memory = {max_memory} GB.")
-        logger.debug(f"{start_gpu_memory} GB of memory reserved.")
 
-        # Training the model
-        trainer_stats = trainer.train()
+app = FastAPI(
+    title="Model Fine-tuning API",
+    description="API for fine-tuning language models",
+    lifespan=lifespan,
+)
 
-        # Show final memory and time stats
-        used_memory = round(torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3)
-        used_memory_for_lora = round(used_memory - start_gpu_memory, 3)
-        used_percentage = round(used_memory / max_memory * 100, 3)
-        lora_percentage = round(used_memory_for_lora / max_memory * 100, 3)
-        logger.info(
-            f"{trainer_stats.metrics['train_runtime']} seconds used for training."
-        )
-        logger.info(
-            f"{round(trainer_stats.metrics['train_runtime']/60, 2)} minutes used for training."
-        )
-        logger.debug(f"Peak reserved memory = {used_memory} GB.")
-        logger.debug(f"Peak reserved memory for training = {used_memory_for_lora} GB.")
-        logger.debug(f"Peak reserved memory % of max memory = {used_percentage} %.")
-        logger.debug(
-            f"Peak reserved memory for training % of max memory = {lora_percentage} %."
+
+class RunIDRequest(BaseModel):
+    run_id: str
+
+
+class TrainingResponse(BaseModel):
+    status: str
+    message: str
+    run_id: str
+
+
+@app.post("/fine-tune", response_model=TrainingResponse)
+async def fine_tune(request: RunIDRequest):
+    """
+    Start a fine-tuning job with the specified run ID
+
+    The job will be queued and processed when resources are available
+    """
+    run_id = request.run_id
+
+    # Validate run_id
+    if not run_id:
+        raise HTTPException(status_code=400, detail="Invalid run_id provided")
+
+    # Validate S3 client exists
+    if "s3_client" not in resources:
+        raise HTTPException(status_code=500, detail="S3 client not initialized")
+
+    # Check if job already exists
+    if run_id in job_status:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job with run_id {run_id} already exists with status {job_status[run_id].status}",
         )
 
-        logger.info("Saving model artifacts to temporary directory...")
+    # Create job info and add to queue
+    job_info = JobInfo(
+        run_id=run_id,
+        status=JobStatus.QUEUED,
+        position_in_queue=job_queue.qsize() + 1 if job_running else 0,
+        created_at=datetime.now(),
+    )
+    job_status[run_id] = job_info
+    await job_queue.put(run_id)
 
-        # Create paths within the temp directory for model artifacts
-        lora_model_temp_path = os.path.join(temp_dir, "lora_model")
+    return TrainingResponse(
+        status="queued",
+        message=f"Fine-tuning job queued at position {job_info.position_in_queue}",
+        run_id=run_id,
+    )
 
-        # Saving the final model as LoRA adapters to temp directory
-        model.save_pretrained(lora_model_temp_path)
-        tokenizer.save_pretrained(lora_model_temp_path)
 
-        logger.info("Model artifacts saved in temporary directory")
+@app.get("/health")
+async def health_check():
+    """Check if the API is running"""
+    s3_status = "connected" if "s3_client" in resources else "disconnected"
+    return {
+        "status": "healthy",
+        "message": "Fine-tuning API is operational",
+        "s3_connection": s3_status,
+    }
 
-        # Upload model artifacts to S3
-        logger.info("Uploading model artifacts to S3...")
 
-        # Define S3 prefixes for the model artifacts
-        lora_model_s3_prefix = f"{run_id}/models/lora_model"
-
-        # Upload both model directories
-        lora_upload_success = upload_directory_to_s3(
-            lora_model_temp_path, lora_model_s3_prefix, s3, AWS_S3_BUCKET
+@app.get("/fine-tune/{run_id}/status")
+async def get_job_status(run_id: str):
+    """Get the status of a specific fine-tuning job"""
+    if run_id not in job_status:
+        raise HTTPException(
+            status_code=404, detail=f"Job with run_id {run_id} not found"
         )
 
-        if lora_upload_success:
-            logger.info("Model artifacts successfully uploaded to S3")
-        else:
-            logger.warning("Model artifacts failed to upload to S3")
+    return job_status[run_id]
+
+
+@app.get("/fine-tune/queue")
+async def get_queue_status():
+    """Get the status of all jobs in the queue"""
+    return {"running": job_running, "queue_size": job_queue.qsize(), "jobs": job_status}
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        with hydra.initialize(config_path="conf"):
+            cfg = hydra.compose(config_name="config")
+
+        logging_config = OmegaConf.to_container(cfg.logging, resolve=True)
+        uvicorn.run("main:app", host="0.0.0.0", port=8000, log_config=logging_config)
+    except Exception as e:
+        logger.error(f"Error loading configuration: {e}")
+        uvicorn.run("main:app", host="0.0.0.0", port=8000)

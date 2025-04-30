@@ -1,6 +1,3 @@
-from fastapi import FastAPI, BackgroundTasks, HTTPException
-from pydantic import BaseModel
-import uvicorn
 from unsloth import FastLanguageModel
 import torch
 from unsloth.chat_templates import get_chat_template
@@ -10,60 +7,22 @@ from transformers import TrainingArguments, DataCollatorForSeq2Seq
 from unsloth import is_bfloat16_supported
 from unsloth.chat_templates import standardize_sharegpt
 import hydra
-from src.general_utils import setup_logger, setup_s3_client, upload_directory_to_s3
+from src.general_utils import setup_logger, upload_directory_to_s3
 import os
 import tempfile
 from dotenv import load_dotenv
-from contextlib import asynccontextmanager
+from typing import Dict
 
-# Load environment variables
 load_dotenv()
 
-# Set up logger
-logger = setup_logger("fine_tuning_api")
-
-# Dictionary to store connections and resources
-resources = {}
+logger = setup_logger("fine_tuning")
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Setup resources on startup
-    logger.info("Setting up S3 client on application startup")
-    resources["s3_client"] = setup_s3_client()
-    resources["s3_bucket"] = os.getenv("AWS_S3_BUCKET")
-    logger.info(f"S3 client initialized, using bucket: {resources['s3_bucket']}")
-
-    yield
-
-    # Clean up resources on shutdown
-    logger.info("Cleaning up resources")
-    resources.clear()
-    logger.info("Resources cleaned up")
-
-
-app = FastAPI(
-    title="Model Fine-tuning API",
-    description="API for fine-tuning language models",
-    lifespan=lifespan,
-)
-
-
-class RunIDRequest(BaseModel):
-    run_id: str
-
-
-class TrainingResponse(BaseModel):
-    status: str
-    message: str
-    run_id: str
-
-
-def run_fine_tuning(run_id: str):
+def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
     """Background task to run the fine-tuning process"""
     try:
         # Load configuration
-        with hydra.initialize(config_path="conf"):
+        with hydra.initialize(config_path="../conf"):
             cfg = hydra.compose(config_name="config")
 
         logger.info(f"Starting fine-tuning for run_id: {run_id}")
@@ -235,7 +194,7 @@ def run_fine_tuning(run_id: str):
             logger.info("Uploading model artifacts to S3...")
 
             # Define S3 prefixes for the model artifacts
-            lora_model_s3_prefix = f"{run_id}/models/lora_model"
+            lora_model_s3_prefix = f"{run_id}/lora_model"
 
             # Upload model directory using the shared S3 client
             lora_upload_success = upload_directory_to_s3(
@@ -254,51 +213,3 @@ def run_fine_tuning(run_id: str):
     except Exception as e:
         logger.error(f"Error in fine-tuning process for run {run_id}: {str(e)}")
         raise
-
-
-@app.post("/fine-tune", response_model=TrainingResponse)
-async def fine_tune(request: RunIDRequest, background_tasks: BackgroundTasks):
-    """
-    Start a fine-tuning job with the specified run ID
-
-    The run_id is used to identify the training data in S3 and to store the model artifacts.
-    """
-    run_id = request.run_id
-
-    # Validate run_id
-    if not run_id:
-        raise HTTPException(status_code=400, detail="Invalid run_id provided")
-
-    # Validate S3 client exists
-    if "s3_client" not in resources:
-        raise HTTPException(status_code=500, detail="S3 client not initialized")
-
-    # Add the fine-tuning task to background tasks
-    background_tasks.add_task(run_fine_tuning, run_id)
-
-    return TrainingResponse(
-        status="started", message="Fine-tuning job started successfully", run_id=run_id
-    )
-
-
-@app.get("/health")
-async def health_check():
-    """Check if the API is running"""
-    s3_status = "connected" if "s3_client" in resources else "disconnected"
-    return {
-        "status": "healthy",
-        "message": "Fine-tuning API is operational",
-        "s3_connection": s3_status,
-    }
-
-
-if __name__ == "__main__":
-    try:
-        with hydra.initialize(config_path="conf"):
-            cfg = hydra.compose(config_name="config")
-        uvicorn.run(
-            "fastapi_main:app", host="0.0.0.0", port=8000, log_config=cfg.logging
-        )
-    except Exception as e:
-        logger.error(f"Error loading configuration: {e}")
-        uvicorn.run("fastapi_main:app", host="0.0.0.0", port=8000)

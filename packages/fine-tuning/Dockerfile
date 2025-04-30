@@ -61,4 +61,4 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
 
-CMD ["fastapi", "run", "--host", "0.0.0.0", "fastapi_main.py"]
+CMD ["python", "main.py"]
