@@ -20,7 +20,6 @@ output:
   s3_bucket: "resonsare-test-bucket"    # S3 bucket name
   s3_region: "ap-southeast-1"           # AWS region
 
-
 # Model settings
 # This is the model we're fine-tuning, so we use its tokenizer to count tokens for chunking.
 # Different models have different tokenizers, so we try to use the same model’s tokenizer for accuracy.
