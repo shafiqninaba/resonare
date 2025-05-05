@@ -17,7 +17,7 @@ graph TD
     F --> G[Compute & log statistics]
     G --> H[Export files<br/>processed.json + train.jsonl]
     H --> I[Optional upload to S3]
-````
+```
 
 ---
 
@@ -184,7 +184,4 @@ curl http://localhost:8010/data-prep/queue
 
 # 4) Health check
 curl http://localhost:8010/data-prep/health
-```
-
-```
 ```
