@@ -9,15 +9,63 @@ Transforms Telegram-style JSON chat exports into clean, token-bounded conversati
 
 ```mermaid
 graph TD
-    A[Client uploads merged JSON] --> B[FastAPI writes temp file<br/>queues run_id]
-    B -->|Background worker| C[Load raw JSON<br/>(list or export)]
-    C --> D[Build Chat & Message objects]
-    D --> E[Chunk into blocks<br/>time gap ≤ threshold<br/>token count within bounds]
-    E --> F[Merge consecutive messages<br/>per sender + optional prompt]
-    F --> G[Compute & log statistics]
-    G --> H[Export files<br/>processed.json + train.jsonl]
-    H --> I[Optional upload to S3]
+    subgraph API
+        A[Client uploads merged JSON]
+        B[FastAPI receives payload<br>writes temp file]
+        C[Queue job ID + path]
+    end
+
+    subgraph Worker
+        direction LR
+        D[Load raw JSON]
+        E[Build Chat & Message objects]
+        F[Chunk into blocks<br>time & token constraints]
+        G[Merge consecutive messages<br>+ optional system prompt]
+        H[Compute & log statistics]
+        I[Export processed.json + train.jsonl]
+        J[Optional upload to S3]
+    end
+
+    A --> B --> C --> D
+    D --> E --> F --> G --> H --> I --> J
+
 ```
+
+flowchart TD
+    subgraph Client
+        A[User uploads JSON<br/> POST /data-prep/process]
+    end
+
+    subgraph FastAPI App
+        A --> B[Parse JSON + Write temp file]
+        B --> C[Generate run_id<br/>Store in job_status]
+        C --> D[Enqueue run_id<br/>job_queue.put-run_id]
+    end
+
+    subgraph Async Worker
+        E[Wait for run_id from job_queue]
+        E --> F[Load JSON from temp file]
+        F --> G[run_data_processing in background thread]
+        G --> H[Write processed files + update status]
+    end
+
+    D --> E
+
+A: Client sends application/json, either a list or a Telegram-style {"chats": {"list": [...]}}.
+
+B: FastAPI writes this payload into /tmp/chat_data_prep/<run_id>.json.
+
+C: A run_id is generated and stored in job_status, tracking position and timestamps.
+
+D: Job is queued in job_queue.
+
+E: Background async task (_worker()) listens on job_queue.
+
+F: Worker loads the JSON from the file path.
+
+G: Heavy lifting happens here: building objects, chunking blocks, writing outputs.
+
+H: Job is marked COMPLETED or FAILED, queue proceeds to next job.
 
 ---
 
