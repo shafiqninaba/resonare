@@ -43,25 +43,29 @@ def run_data_processing(
     # 0) Load raw chats from temp file, then delete the file when done
     # --------------------------------------------------------------------
     path = Path(input_spec["path"])
-    data = json.loads(path.read_text(encoding="utf-8"))
-
-    # Accept a list OR Telegram export
-    if isinstance(data, list):
-        # If the input is a list, we assume it's already in the correct format
-        raw_chats = data
-    elif isinstance(data, dict):
-        if "chats" in data and "list" in data["chats"]:
-            # If the input is a dict, we assume it's a Telegram export
-            raw_chats = data["chats"]["list"]
-        else:
-            raw_chats = [data]
-    logger.info("Loaded %s chats from %s", len(raw_chats), path)
-
-    # Optional: remove temp file early
     try:
-        path.unlink(missing_ok=True)
+        data = json.loads(path.read_text(encoding="utf-8"))
+
+        if isinstance(data, list):
+            raw_chats = [c for c in data if {"name", "messages"} <= c.keys()]
+            if not raw_chats:
+                raise ValueError("List contained no valid chat objects")
+
+        elif isinstance(data, dict) and "chats" in data and "list" in data["chats"]:
+            raw_chats = data["chats"]["list"]
+
+        elif isinstance(data, dict) and {"name", "messages"} <= data.keys():
+            raw_chats = [data]
+
+        else:
+            raise ValueError("Unrecognised JSON structure")
+
     except Exception as e:
-        logger.warning("Could not delete temp file %s: %s", path, e)
+        logger.error(f"Failed to load raw chats from {path}: {e}")
+        raise
+
+    finally:
+        path.unlink(missing_ok=True)  # always remove temp file
 
     logger.info("Loaded %s raw chats from %s", len(raw_chats), path)
 

@@ -23,6 +23,7 @@ import tempfile
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
+import yaml
 
 from enum import Enum
 from src.processing import run_data_processing
@@ -84,9 +85,8 @@ async def lifespan(app: FastAPI):
     # Setup resources on startup
     logger.info("Setting up S3 client on application startup")
     resources["s3_client"] = setup_s3_client()
-    resources["s3_bucket"] = os.getenv("AWS_S3_BUCKET")
     resources["inputs"] = {}  # run_id → {"path": ...}
-    logger.info(f"S3 client initialized, using bucket: {resources['s3_bucket']}")
+    logger.info("S3 client initialized successfully.")
 
     # Start the job processor
     resources["job_processor"] = asyncio.create_task(_worker())
@@ -238,4 +238,16 @@ async def health():
 
 
 if __name__ == "__main__":
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
+    project_root = Path(__file__).parent
+    logging_config_path = os.path.join(
+        project_root,
+        "conf",
+        "logging.yaml",
+    )
+
+    with open(logging_config_path, encoding="utf-8") as file:
+        log_config = yaml.safe_load(file)
+
+    uvicorn.run(
+        "app:app", host="0.0.0.0", port=8000, reload=True, log_config=log_config
+    )
