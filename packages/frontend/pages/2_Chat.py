@@ -6,14 +6,14 @@ st.title("Chat with Model")
 
 # Initialize chat history and run_id in session state
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+    st.session_state.messages = []  # Format: [{"role": "user/assistant", "content": "..."}]
 if "run_id" not in st.session_state:
     st.session_state.run_id = ""
 if "run_id_locked" not in st.session_state:
     st.session_state.run_id_locked = False
 
 # --- Run ID Input ---
-# Disable input if messages exist (meaning a chat has started)
+# ... (rest of the Run ID input code remains the same) ...
 run_id_input = st.text_input(
     "Enter Run ID",
     value=st.session_state.run_id,
@@ -41,11 +41,12 @@ if prompt := st.chat_input("What is up?"):
         if not st.session_state.messages:
             st.session_state.run_id_locked = True
 
-        # Display user message immediately
+        # Add user message to chat history FIRST
+        st.session_state.messages.append({"role": "user", "content": prompt})
+
+        # Display user message immediately (after adding to history)
         with st.chat_message("user"):
             st.markdown(prompt)
-        # Add user message to chat history
-        st.session_state.messages.append({"role": "user", "content": prompt})
 
         # --- Backend API Call ---
         assistant_response_content = (
@@ -55,7 +56,11 @@ if prompt := st.chat_input("What is up?"):
         try:
             # Assuming your FastAPI backend is running at http://localhost:8000
             api_url = "http://localhost:8000/infer"
-            payload = {"run_id": st.session_state.run_id, "prompt": ">>> " + prompt}
+            # Send the entire message history in the payload
+            payload = {
+                "run_id": st.session_state.run_id,
+                "messages": st.session_state.messages,
+            }
 
             # Add a spinner while waiting for the backend
             with st.spinner("Waiting for model response..."):

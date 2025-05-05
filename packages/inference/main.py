@@ -12,6 +12,7 @@ from src.general_utils import (
 from dotenv import load_dotenv
 import torch
 from collections import defaultdict
+from typing import List, Dict  # Import List and Dict for typing
 
 # Load environment variables
 load_dotenv()
@@ -39,7 +40,10 @@ app = FastAPI()
 # --- Pydantic Model for Request Body ---
 class InferenceRequest(BaseModel):
     run_id: str
-    prompt: str
+    # Expect a list of message dictionaries instead of a single prompt
+    messages: List[
+        Dict[str, str]
+    ]  # e.g., [{"role": "user", "content": "..."}, {"role": "assistant", ...}]
 
 
 # --- Helper Function to Load Model (with Caching and Locking) ---
@@ -48,6 +52,7 @@ async def load_or_get_model(run_id: str):
     Loads a model if not in cache, otherwise returns the cached model.
     Uses locking to prevent concurrent loads of the same model.
     """
+    # ... (load_or_get_model function remains exactly the same) ...
     # Check cache first (without lock for read access)
     if run_id in model_cache:
         logger.info(f"Using cached model for run_id: {run_id}")
@@ -134,21 +139,27 @@ async def load_or_get_model(run_id: str):
 # --- API Endpoint ---
 @app.post("/infer")
 async def run_inference(request_data: InferenceRequest):
-    """Runs inference using a cached model specified by run_id."""
+    """Runs inference using a cached model specified by run_id, using conversation history."""
     run_id = request_data.run_id
-    user_prompt = request_data.prompt
+    messages = request_data.messages  # Get the list of messages from the request
+
+    # Basic validation: Ensure messages list is not empty
+    if not messages:
+        raise HTTPException(status_code=400, detail="Messages list cannot be empty.")
 
     try:
         # Get model and tokenizer (loads from S3 and caches if not already loaded)
         model, tokenizer = await load_or_get_model(run_id)
 
-        logger.info(f"Running inference for run_id: {run_id}...")
+        logger.info(
+            f"Running inference for run_id: {run_id} with {len(messages)} messages..."
+        )
 
-        messages = [{"role": "user", "content": user_prompt}]
+        # Use the received message history directly
         inputs = tokenizer.apply_chat_template(
-            messages,
+            messages,  # Pass the whole conversation
             tokenize=True,
-            add_generation_prompt=True,
+            add_generation_prompt=True,  # Add prompt for the assistant to respond
             return_tensors="pt",
         ).to("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -160,6 +171,8 @@ async def run_inference(request_data: InferenceRequest):
             temperature=1.5,
             min_p=0.1,
             pad_token_id=tokenizer.eos_token_id,
+            # You might need to adjust max_new_tokens if context gets long
+            max_new_tokens=512,  # Example: Limit generated tokens
         )
 
         input_length = inputs.shape[1]
@@ -186,6 +199,7 @@ async def run_inference(request_data: InferenceRequest):
 # --- Cleanup on Shutdown (Optional but Recommended) ---
 @app.on_event("shutdown")
 def shutdown_event():
+    # ... (shutdown_event remains the same) ...
     global model_cache, loading_locks
     logger.info("FastAPI application shutting down. Clearing model cache.")
     # Explicitly clear cache and locks
