@@ -28,7 +28,6 @@ graph TD
 
     A --> B --> C --> D
     D --> E --> F --> G --> H --> I --> J
-
 ```
 
 ```mermaid

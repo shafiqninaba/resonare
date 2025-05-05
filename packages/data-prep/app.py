@@ -130,6 +130,11 @@ async def _worker():
                 job_info.status = JobStatus.COMPLETED
                 job_info.completed_at = datetime.now()
                 logger.info(f"Job {run_id} completed successfully")
+
+                # Post-processing trigger
+                logger.info(f"Triggering finetuning for job {run_id}")
+                await post_process_hook(run_id)
+
             except Exception as e:
                 job_info.status = JobStatus.FAILED
                 job_info.error = str(e)
@@ -144,6 +149,30 @@ async def _worker():
         except Exception as e:
             logger.error(f"Error in job processor: {str(e)}")
             await asyncio.sleep(5)  # Wait before retrying
+
+
+async def post_process_hook(run_id: str):
+    """
+    Called immediately after a job is marked COMPLETED.
+    You can:
+    - Notify another service
+    - Trigger fine-tuning
+    - Log output paths
+    - Push to a message queue
+    """
+    logger.info(f"[HOOK] Job {run_id} completed. Triggering post-processing...")
+
+    # Example: trigger fine-tune via REST API
+    import httpx
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "http://localhost:8020/fine-tune", json={"run_id": run_id}, timeout=10
+            )
+            logger.info(f"[HOOK] Fine-tune trigger status: {response.status_code}")
+    except Exception as e:
+        logger.error(f"[HOOK] Failed to trigger fine-tune: {e}")
 
 
 def update_queue_positions():
