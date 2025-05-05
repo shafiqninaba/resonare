@@ -19,5 +19,6 @@ fine-tuning = {workspace = true}
 [tool.uv.workspace]
 members = [
   "packages/fine-tuning",
-  "packages/data-prep"
+  "packages/data-prep",
+  "packages/inference"
 ]
