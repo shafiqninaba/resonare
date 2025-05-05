@@ -1,7 +1,6 @@
 import logging
 import logging.config
 import os
-
 import boto3
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
@@ -39,53 +38,6 @@ def setup_logger(name: str) -> logging.Logger:
 logger = setup_logger(__name__)
 
 
-def setup_s3_client() -> boto3.client:
-    """
-    Set up an S3 client for uploading processed data to AWS S3.
-
-    Returns:
-        s3: Boto3 S3 client object.
-    """
-
-    logger.info("Setting up S3 client for uploading processed data...")
-
-    try:
-        # Read AWS credentials from environment variables
-        # Note: boto3 looks for AWS credentials in serveal locations. https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html
-
-        AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID")
-        AWS_SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-        AWS_REGION = os.getenv("AWS_REGION")
-        AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
-
-        if (
-            not AWS_ACCESS_KEY
-            or not AWS_SECRET_KEY
-            or not AWS_REGION
-            or not AWS_S3_BUCKET
-        ):
-            logger.error(
-                "Missing AWS credentials in environment variables. "
-                "Please set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, and AWS_S3_BUCKET."
-            )
-            raise EnvironmentError("Missing AWS credentials in environment variables.")
-
-        # Create S3 client
-        s3 = boto3.client(
-            "s3",
-            aws_access_key_id=AWS_ACCESS_KEY,
-            aws_secret_access_key=AWS_SECRET_KEY,
-            region_name=AWS_REGION,
-        )
-        logger.info("S3 client setup successful.")
-        return s3
-
-    except Exception as e:
-        logger.error(
-            f"Failed to set up S3 client: {e}, s3 upload will be skipped, only local export will be used."
-        )
-
-
 def downloadDirectoryFroms3(bucketName, remoteDirectoryName, localDirectoryName):
     s3_resource = boto3.resource("s3")
     bucket = s3_resource.Bucket(bucketName)
@@ -110,3 +62,50 @@ def downloadDirectoryFroms3(bucketName, remoteDirectoryName, localDirectoryName)
         # Download the file
         logger.info(f"Downloading {obj.key} to {local_file_path}")
         bucket.download_file(obj.key, local_file_path)
+
+
+def list_directories_in_bucket(bucket_name: str) -> list[str]:
+    """
+    Lists all top-level directories in a given S3 bucket.
+
+    Args:
+        bucket_name (str): The name of the S3 bucket.
+
+    Returns:
+        list[str]: A list of directory names (prefixes ending with '/').
+    """
+    s3_client = boto3.client("s3")
+    directories = (
+        set()
+    )  # Use a set to avoid duplicates if pagination returns overlapping prefixes
+    paginator = s3_client.get_paginator("list_objects_v2")
+    logger.info(f"Listing directories in S3 bucket: {bucket_name}")
+
+    try:
+        # Paginate through results to handle buckets with many objects/prefixes
+        page_iterator = paginator.paginate(Bucket=bucket_name, Delimiter="/")
+        for page in page_iterator:
+            if "CommonPrefixes" in page:
+                for prefix_info in page["CommonPrefixes"]:
+                    # CommonPrefixes gives paths ending with the delimiter, e.g., 'folder/'
+                    directories.add(
+                        prefix_info["Prefix"].rstrip("/")
+                    )  # Remove trailing slash for consistency
+                    logger.debug(f"Found directory: {prefix_info['Prefix']}")
+
+        logger.info(f"Found {len(directories)} directories in bucket {bucket_name}.")
+        return sorted(list(directories))  # Return sorted list for consistency
+
+    except Exception as e:
+        logger.error(f"Failed to list directories in bucket {bucket_name}: {e}")
+        return []
+
+
+if __name__ == "__main__":
+    # Example usage
+    bucket_name = os.getenv("AWS_S3_BUCKET")
+    if bucket_name:
+        directories = list_directories_in_bucket(bucket_name)
+        print("Directories in bucket:", directories)
+    else:
+        print("Bucket name not set in environment variables.")

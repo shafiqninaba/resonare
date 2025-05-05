@@ -1,5 +1,7 @@
 [project]
-dependencies = []
+dependencies = [
+  "fastapi[standard]>=0.115.12"
+]
 description = "Add your description here"
 name = "inference"
 readme = "README.md"
