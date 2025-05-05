@@ -20,5 +20,6 @@ fine-tuning = {workspace = true}
 members = [
   "packages/fine-tuning",
   "packages/data-prep",
-  "packages/inference"
+  "packages/inference",
+  "packages/frontend"
 ]
