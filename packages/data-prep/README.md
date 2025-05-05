@@ -1,4 +1,4 @@
-````markdown
+```markdown
 # Resonare Data Prep
 
 Transforms Telegram-style JSON chat exports into clean, token-bounded conversation blocks suitable for LLM fine-tuning.
@@ -31,6 +31,7 @@ graph TD
 
 ```
 
+```mermaid
 flowchart TD
     subgraph Client
         A[User uploads JSON<br/> POST /data-prep/process]
@@ -50,22 +51,22 @@ flowchart TD
     end
 
     D --> E
+```
+* A: Client sends application/json, either a list or a Telegram-style {"chats": {"list": [...]}}.
 
-A: Client sends application/json, either a list or a Telegram-style {"chats": {"list": [...]}}.
+* B: FastAPI writes this payload into /tmp/chat_data_prep/<run_id>.json.
 
-B: FastAPI writes this payload into /tmp/chat_data_prep/<run_id>.json.
+* C: A run_id is generated and stored in job_status, tracking position and timestamps.
 
-C: A run_id is generated and stored in job_status, tracking position and timestamps.
+* D: Job is queued in job_queue.
 
-D: Job is queued in job_queue.
+* E: Background async task (_worker()) listens on job_queue.
 
-E: Background async task (_worker()) listens on job_queue.
+* F: Worker loads the JSON from the file path.
 
-F: Worker loads the JSON from the file path.
+* G: Heavy lifting happens here: building objects, chunking blocks, writing outputs.
 
-G: Heavy lifting happens here: building objects, chunking blocks, writing outputs.
-
-H: Job is marked COMPLETED or FAILED, queue proceeds to next job.
+* H: Job is marked COMPLETED or FAILED, queue proceeds to next job.
 
 ---
 
