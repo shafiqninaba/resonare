@@ -7,6 +7,7 @@ st.title("Chat with Model")
 # Initialize chat history and run_id in session state
 if "messages" not in st.session_state:
     st.session_state.messages = []  # Format: [{"role": "user/assistant", "content": "..."}]
+    st.session_state.displayed_messages = []  # for streamlit to display to bypass the >>> markdown issue
 if "run_id" not in st.session_state:
     st.session_state.run_id = ""
 if "run_id_locked" not in st.session_state:
@@ -27,7 +28,7 @@ if not st.session_state.run_id_locked:
 
 
 # Display chat messages from history on app rerun
-for message in st.session_state.messages:
+for message in st.session_state.displayed_messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
@@ -37,12 +38,17 @@ if prompt := st.chat_input("What is up?"):
     if not st.session_state.run_id:
         st.warning("Please enter a Run ID before starting the chat.")
     else:
+        # Determine if this is the first message exchange
+        is_first_message = not st.session_state.messages
+
         # Lock the run_id input after the first message is submitted
-        if not st.session_state.messages:
+        if is_first_message:
             st.session_state.run_id_locked = True
 
         # Add user message to chat history FIRST
-        st.session_state.messages.append({"role": "user", "content": prompt})
+        st.session_state.messages.append({"role": "user", "content": ">>> " + prompt})
+        # Add the user message to displayed messages to avoid markdown issues
+        st.session_state.displayed_messages.append({"role": "user", "content": prompt})
 
         # Display user message immediately (after adding to history)
         with st.chat_message("user"):
@@ -62,8 +68,15 @@ if prompt := st.chat_input("What is up?"):
                 "messages": st.session_state.messages,
             }
 
+            # Set spinner text based on whether it's the first message
+            spinner_text = (
+                "Downloading model..."
+                if is_first_message
+                else "Waiting for model response..."
+            )
+
             # Add a spinner while waiting for the backend
-            with st.spinner("Waiting for model response..."):
+            with st.spinner(spinner_text):
                 response = requests.post(
                     api_url, json=payload, timeout=120
                 )  # Added timeout
@@ -109,14 +122,21 @@ if prompt := st.chat_input("What is up?"):
                     assistant_response_content or "Error: Empty response received."
                 )
             # Add the single error message to history
-            st.session_state.messages.append(
-                {
-                    "role": "assistant",
-                    "content": assistant_response_content
-                    or "Error: Empty response received.",
-                }
-            )
+            # Check if the error message is already the last message to avoid duplicates on rerun
+            if not st.session_state.messages or st.session_state.messages[-1].get(
+                "content"
+            ) != (assistant_response_content or "Error: Empty response received."):
+                st.session_state.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": assistant_response_content
+                        or "Error: Empty response received.",
+                    }
+                )
         else:
+            st.session_state.messages.append(
+                {"role": "assistant", "content": assistant_response_content}
+            )
             # Split the response by ">>> " and process each part
             # Use regex split to handle potential variations in spacing and leading/trailing newlines
             response_parts = re.split(r"\s*>>>\s*", assistant_response_content)
@@ -128,6 +148,6 @@ if prompt := st.chat_input("What is up?"):
                     with st.chat_message("assistant"):
                         st.markdown(cleaned_part)
                     # Add each part as a separate message to chat history
-                    st.session_state.messages.append(
+                    st.session_state.displayed_messages.append(
                         {"role": "assistant", "content": cleaned_part}
                     )
