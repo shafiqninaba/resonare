@@ -1,6 +1,12 @@
 [project]
 dependencies = [
-  "fastapi[standard]>=0.115.12"
+  "boto3>=1.37.35",
+  "fastapi[standard]>=0.115.12",
+  "omegaconf>=2.3.0",
+  "python-dotenv>=1.1.0",
+  "setuptools>=78.1.0",
+  "torch>=2.6.0",
+  "unsloth>=2025.3.19"
 ]
 description = "Add your description here"
 name = "inference"
