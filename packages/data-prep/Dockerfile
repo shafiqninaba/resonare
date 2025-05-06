@@ -19,6 +19,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 ADD . /app
 
 # Sync the project
+# Locked -> To disable automatic locking, use the --locked option: If the lockfile is not up-to-date, uv will raise an error instead of updating the lockfile.
+# Frozen -> To use the lockfile without checking if it is up-to-date, use the --frozen option
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 

@@ -17,8 +17,8 @@ services:
       watch:
         # only sync source code & main script
         - action: sync
-          path: ./packages/data-prep/src               # host
-          target: /app/src                             # container
+          path: ./packages/data-prep/src              
+          target: /app/src                             
         - action: sync
           path: ./packages/data-prep/app.py
           target: /app/app.py
@@ -42,8 +42,8 @@ services:
   #     watch:
   #       # only sync source code & main script
   #       - action: sync
-  #         path: ./packages/fine-tuning/src               # host
-  #         target: /app/src                             # container
+  #         path: ./packages/fine-tuning/src              
+  #         target: /app/src                            
   #       - action: sync
   #         path: ./packages/fine-tuning/main.py
   #         target: /app/main.py
@@ -67,8 +67,8 @@ services:
   #     watch:
   #       # only sync source code & main script
   #       - action: sync
-  #         path: ./packages/inference/src               # host
-  #         target: /app/src                             # container
+  #         path: ./packages/inference/src               
+  #         target: /app/src                             
   #       - action: sync
   #         path: ./packages/inference/main.py
   #         target: /app/main.py
@@ -96,14 +96,15 @@ services:
     develop:
       watch:
         - action: sync
+          path: ./packages/frontend/src
+          target: /app/src
+        - action: sync
           path: ./packages/frontend/main.py
           target: /app/main.py
         - action: sync
           path: ./packages/frontend/pages
           target: /app/pages
-        - action: sync
-          path: ./packages/frontend/utils.py
-          target: /app/utils.py
+
 
 networks:
   default:

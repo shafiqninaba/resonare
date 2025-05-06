@@ -316,7 +316,7 @@ def run_data_processing(
     #   • Prefix every line with the delimiter (e.g. '>>>')
     #   • Separate lines with '\n'
     #   • Keep the timestamp of the first message in each group
-    #   • Ensure that for each block, the first message is from the user and the last message is from the assistant
+    #   • For each block, trim leading assistant messages and trailing user messages
     #   • Add a system message at the start of each block if specified
     logger.info("Merging consecutive messages by sender within each block...")
     delimiter = cfg.message_delimiter.strip()

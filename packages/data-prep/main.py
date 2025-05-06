@@ -397,6 +397,7 @@ def main(cfg: DictConfig) -> None:
     #   • Prefix every line with the delimiter (e.g. '>>>')
     #   • Separate lines with '\n'
     #   • Keep the timestamp of the first message in each group
+    #   • For each block, trim leading assistant messages and trailing user messages
     #   • Add a system message at the start of each block if specified
     logger.info("Merging consecutive messages by sender within each block...")
     delimiter = cfg.message_delimiter.strip()
@@ -443,6 +444,45 @@ def main(cfg: DictConfig) -> None:
             merged_blocks.append(merged_messages)
 
         convo.blocks = merged_blocks
+
+    # ------------------------------------------------------------------
+    # 6b) Ensure each block starts with USER and ends with ASSISTANT
+    # ------------------------------------------------------------------
+    fixed_blocks_total = 0
+    discarded_blocks = 0
+
+    for convo in chats:
+        new_blocks: List[List[Message]] = []
+
+        for block in convo.blocks:
+            if not block:
+                continue
+
+            # Trim leading assistant messages
+            while block and block[0].role == "assistant":
+                block = block[1:]
+
+            # Trim trailing user messages
+            while block and block[-1].role == "user":
+                block = block[:-1]
+
+            # Keep block only if it now starts with user and ends with assistant
+            if (
+                len(block) >= 2
+                and block[0].role == "user"
+                and block[-1].role == "assistant"
+            ):
+                new_blocks.append(block)
+                fixed_blocks_total += 1
+            else:
+                discarded_blocks += 1
+
+        convo.blocks = new_blocks
+
+    logger.info(
+        f"Role‑sanity pass complete: {fixed_blocks_total} blocks kept, "
+        f"{discarded_blocks} blocks discarded for incorrect start/end roles."
+    )
 
     # Append the system message to each block
     if cfg.system_prompt:
