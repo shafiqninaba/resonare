@@ -3,7 +3,7 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime
 from enum import Enum
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import hydra
 import uvicorn
@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from omegaconf import OmegaConf
 from pydantic import BaseModel
-
 from src.fine_tune import run_fine_tuning
 from src.general_utils import setup_logger, setup_s3_client
 
@@ -182,32 +181,63 @@ async def fine_tune(request: RunIDRequest):
     )
 
 
+@app.get("/jobs")
+async def get_all_job_status() -> Dict[str, JobInfo]:
+    """Return the full mapping of all job statuses.
+
+    Returns:
+        Dict[str, JobInfo]: All known jobs, regardless of status.
+    """
+    return job_status
+
+
+@app.get("/jobs/{run_id}")
+async def get_job_status(run_id: str) -> JobInfo:
+    """Retrieve the status and metadata of a specific preprocessing job.
+
+    Args:
+        run_id (str): Unique job identifier.
+
+    Returns:
+        JobInfo: Metadata about the specified job.
+
+    Raises:
+        HTTPException: If job ID is not found.
+    """
+    if run_id not in job_status:
+        raise HTTPException(
+            status_code=404, detail=f"Job with run_id {run_id} not found"
+        )
+    return job_status[run_id]
+
+
+@app.get("/queue")
+async def get_queue_status() -> Dict[str, Any]:
+    """Get the status of all jobs currently in the queue.
+
+    Returns:
+        Dict[str, Any]: Job queue summary including queue size and all job statuses.
+    """
+    return {
+        "running": job_running,
+        "queue_size": job_queue.qsize(),
+        "jobs": job_status,
+    }
+
+
 @app.get("/health")
-async def health_check():
-    """Check if the API is running"""
+async def get_health_status() -> Dict[str, str]:
+    """Health check endpoint that verifies service readiness.
+
+    Returns:
+        Dict[str, str]: Simple service and S3 health status.
+    """
     s3_status = "connected" if "s3_client" in resources else "disconnected"
     return {
         "status": "healthy",
         "message": "Fine-tuning API is operational",
         "s3_connection": s3_status,
     }
-
-
-@app.get("/fine-tune/{run_id}/status")
-async def get_job_status(run_id: str):
-    """Get the status of a specific fine-tuning job"""
-    if run_id not in job_status:
-        raise HTTPException(
-            status_code=404, detail=f"Job with run_id {run_id} not found"
-        )
-
-    return job_status[run_id]
-
-
-@app.get("/fine-tune/queue")
-async def get_queue_status():
-    """Get the status of all jobs in the queue"""
-    return {"running": job_running, "queue_size": job_queue.qsize(), "jobs": job_status}
 
 
 if __name__ == "__main__":

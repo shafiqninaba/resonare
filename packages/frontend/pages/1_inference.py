@@ -1,6 +1,7 @@
-import streamlit as st
-import requests  # Assuming you'll use requests to call the backend
 import re  # Import regular expressions module
+
+import requests  # Assuming you'll use requests to call the backend
+import streamlit as st
 
 st.title("Chat with Model")
 

@@ -4,11 +4,10 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 import boto3
 import hydra
-
 from src.models import Chat, Message
 from src.utils.processing import (
     calculate_chat_stats,
@@ -31,7 +30,7 @@ def run_data_processing(
     ----------
     run_id      : uuid string
     resources   : dict with shared handles (S3 client, etc.)
-    input_spec  : dict with input specification (e.g. {"path": "/abs/path/raw.json"})
+    input_spec  : dict with input specification (e.g. {"path": "/abs/path/raw.json"}) and additional overrides
 
     Returns a dict of summary statistics at the end, e.g.
     {
@@ -104,25 +103,24 @@ def run_data_processing(
         with raw_chats_filepath.open("w", encoding="utf-8") as f:
             json.dump(raw_chats, f, ensure_ascii=False, indent=2)
 
-    # Upload to S3 if configured
-    if "s3" in cfg.output.modes:
-        logger.info(f"Uploading raw chats to S3 bucket {cfg.output.s3_bucket}...")
+    # Upload to S3
+    logger.info(f"Uploading raw chats to S3 bucket {cfg.output.s3_bucket}...")
 
-        try:
-            s3_client.put_object(
-                Bucket=cfg.output.s3_bucket,
-                Key=f"{run_id}/data/raw.json",
-                Body=json.dumps(raw_chats, ensure_ascii=False, indent=2),
-                Metadata={
-                    "uuid": run_id,
-                },
-            )
-            logger.info(
-                f"Successfully uploaded raw chats to s3://{cfg.output.s3_bucket}/{run_id}/raw.json"
-            )
-        except Exception as e:
-            logger.error(f"Failed to upload raw chats to S3: {e}")
-            raise
+    try:
+        s3_client.put_object(
+            Bucket=cfg.output.s3_bucket,
+            Key=f"{run_id}/data/raw.json",
+            Body=json.dumps(raw_chats, ensure_ascii=False, indent=2),
+            Metadata={
+                "uuid": run_id,
+            },
+        )
+        logger.info(
+            f"Successfully uploaded raw chats to s3://{cfg.output.s3_bucket}/{run_id}/raw.json"
+        )
+    except Exception as e:
+        logger.error(f"Failed to upload raw chats to S3: {e}")
+        raise
 
     # ---------------------
     # 3) Tokenizer loading
@@ -317,6 +315,7 @@ def run_data_processing(
     #   • Prefix every line with the delimiter (e.g. '>>>')
     #   • Separate lines with '\n'
     #   • Keep the timestamp of the first message in each group
+    #   • Ensure that for each block, the first message is from the user and the last message is from the assistant
     #   • Add a system message at the start of each block if specified
     logger.info("Merging consecutive messages by sender within each block...")
     delimiter = cfg.message_delimiter.strip()
@@ -364,7 +363,48 @@ def run_data_processing(
 
         convo.blocks = merged_blocks
 
-    # Append the system message to each block
+    # ------------------------------------------------------------------
+    # 6b) Ensure each block starts with USER and ends with ASSISTANT
+    # ------------------------------------------------------------------
+    fixed_blocks_total = 0
+    discarded_blocks = 0
+
+    for convo in chats:
+        new_blocks: List[List[Message]] = []
+
+        for block in convo.blocks:
+            if not block:
+                continue
+
+            # Trim leading assistant messages
+            while block and block[0].role == "assistant":
+                block = block[1:]
+
+            # Trim trailing user messages
+            while block and block[-1].role == "user":
+                block = block[:-1]
+
+            # Keep block only if it now starts with user and ends with assistant
+            if (
+                len(block) >= 2
+                and block[0].role == "user"
+                and block[-1].role == "assistant"
+            ):
+                new_blocks.append(block)
+                fixed_blocks_total += 1
+            else:
+                discarded_blocks += 1
+
+        convo.blocks = new_blocks
+
+    logger.info(
+        f"Role‑sanity pass complete: {fixed_blocks_total} blocks kept, "
+        f"{discarded_blocks} blocks discarded for incorrect start/end roles."
+    )
+
+    # ------------------------------------------------------------------
+    # 6c) Add system message to each block if specified
+    # ------------------------------------------------------------------
     if cfg.system_prompt:
         logger.info(
             f"Prepending system message to each conversation block with content: {cfg.system_prompt}"
@@ -497,8 +537,8 @@ def run_data_processing(
         with processed_chats_filepath.open("w", encoding="utf-8") as f:
             json.dump(chat_records, f, ensure_ascii=False, indent=2)
 
-    # 8.3) Upload processed chats to S3 if needed
-    if "s3" in cfg.output.modes and s3_client is not None:
+    # 8.3) Upload processed chats to S3
+    if s3_client is not None:
         logger.info(f"Uploading processed chats to S3 bucket {cfg.output.s3_bucket}...")
         try:
             s3_client.put_object(
@@ -532,8 +572,8 @@ def run_data_processing(
         with training_blocks_filepath.open("w", encoding="utf-8") as f:
             f.write("\n".join(training_block_lines))
 
-    # 8.5) Upload training blocks to S3 if needed
-    if "s3" in cfg.output.modes and s3_client is not None:
+    # 8.5) Upload training blocks to S3
+    if s3_client is not None:
         logger.info(f"Uploading training blocks to S3 bucket {cfg.output.s3_bucket}...")
         try:
             s3_client.put_object(

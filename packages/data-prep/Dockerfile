@@ -20,10 +20,10 @@ ADD . /app
 
 # Sync the project
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev
+    uv sync --frozen --no-dev
 
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
 
-CMD ["python", "main.py"]
+CMD ["python", "app.py"]
 

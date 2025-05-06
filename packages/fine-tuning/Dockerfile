@@ -50,7 +50,7 @@ RUN uv venv --python 3.12
 # Install the project's dependencies using the lockfile and settings
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync
+    uv sync --no-install-project
 
 # Then, add the rest of the project source code and install it
 # Installing separately from its dependencies allows optimal layer caching
