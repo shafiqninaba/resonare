@@ -3,61 +3,22 @@
 from __future__ import annotations
 
 import os
-import textwrap
-import datetime
 from typing import Any, Dict, List, Optional
 
 import requests
 import streamlit as st
 
-from utils import parse_json_chats, display_summary, poll_job
+from utils import display_summary, parse_json_chats, poll_job, show_export_examples
 
-# ----------------------------------------------------------------------------- #
-#  Constants
-# ----------------------------------------------------------------------------- #
+# Constants
 DATA_PREP_URL: str = os.getenv("DATA_PREP_URL", "http://data-prep:8000")
 FINE_TUNE_URL: str = os.getenv("FINE_TUNING_URL", "http://fine-tuning:8000")
 
-DEFAULT_MODEL: str = "meta-llama/Llama-3.2-1B"
 DEFAULT_PROMPT: str = "You are Ren Hwa, a kind, sensitive and somewhat bubbly guy."
 DEFAULT_NAME: str = "Ren Hwa"
-JSON_ALL_CHATS: str = textwrap.dedent(
-    """
-    {
-      "about": "...",
-      "chats": {
-        "about": "...",
-        "list": [
-          {
-            "name": "salt",
-            "messages": [
-              {"id": 71179, "from": "salt", "text": [...], ...},
-              {"id": 71187, "from": "Ren Hwa", "text": "Thx", ...}
-            ]
-          }
-        ]
-      }
-    }
-"""
-).strip()
-
-JSON_SINGLE_CHAT: str = textwrap.dedent(
-    """
-    {
-      "name": "salt",
-      "type": "personal_chat",
-      "messages": [
-        {"id": 71179, "from": "salt", "text": [...], ...},
-        {"id": 71187, "from": "Ren Hwa", "text": "Thx", ...}
-      ]
-    }
-"""
-).strip()
 
 
-# ----------------------------------------------------------------------------- #
-#  Backend helpers
-# ----------------------------------------------------------------------------- #
+# Endpoints Helper Functions
 def submit_data_prep_job(
     chats: List[Dict[str, Any]],
     overrides: Dict[str, Any],
@@ -77,11 +38,15 @@ def submit_data_prep_job(
         return None
 
 
-def submit_fine_tune_job(run_id: str, base_url: str = FINE_TUNE_URL) -> Optional[str]:
+def submit_fine_tune_job(
+    run_id: str, overrides: Dict[str, Any], base_url: str = FINE_TUNE_URL
+) -> Optional[str]:
     """Kick off a fine‑tuning job for a given `run_id`."""
     try:
         resp = requests.post(
-            f"{base_url}/fine-tune", json={"run_id": run_id}, timeout=60
+            f"{base_url}/fine-tune",
+            json={"run_id": run_id, "overrides": overrides},
+            timeout=60,
         )
         resp.raise_for_status()
         return resp.json().get("run_id")
@@ -90,47 +55,12 @@ def submit_fine_tune_job(run_id: str, base_url: str = FINE_TUNE_URL) -> Optional
         return None
 
 
-# ----------------------------------------------------------------------------- #
-#  UI helper blocks
-# ----------------------------------------------------------------------------- #
-def show_export_examples() -> None:
-    """Visualise Telegram export formats (all‑chat vs single‑chat)."""
-    st.markdown("### 🧾 Telegram Export Formats")
-
-    st.markdown("""
-    Telegram exports can be structured in two ways:
-
-    - **All chats** (multi-chat export): your JSON will contain a top-level `chats.list`
-    - **Individual chat**: the file itself is a single `dict` with `messages`
-
-    Both are supported by Resonare.
-    """)
-
-    col1, col2 = st.columns(2, gap="medium")
-
-    with col1:
-        st.image(
-            "assets/export_all.png", caption="All‑chat export", use_container_width=True
-        )
-        st.code(JSON_ALL_CHATS, language="json")
-
-    with col2:
-        st.image(
-            "assets/export_individual.png",
-            caption="Single‑chat export",
-            use_container_width=True,
-        )
-        st.code(JSON_SINGLE_CHAT, language="json")
-
-
-# ----------------------------------------------------------------------------- #
-#  Main page logic
-# ----------------------------------------------------------------------------- #
 def main() -> None:
     """Render the Resonare home page."""
     st.set_page_config(page_title="Resonare – LLM Twin", layout="centered")
     st.title("🧠 Resonare | LLM Twin")
 
+    ## Introduction
     st.markdown("""
         Welcome to **Resonare**, a platform to fine-tune various LLM models on your own chat history  
         (e.g. Telegram, WhatsApp) using **[Unsloth](https://unsloth.ai)**.
@@ -138,7 +68,7 @@ def main() -> None:
         Build a **digital twin** of yourself!
     """)
 
-    # ──────────────────────────────────────────────────────────────────  STEP 1
+    ## Step 1: Instructions to export chat data
     st.markdown("## 📥 Step 1 – Export Your Chat Data")
     st.markdown("""
     You can export chat history through 2 ways:
@@ -154,30 +84,23 @@ def main() -> None:
     """)
     show_export_examples()  # screenshots + JSON snippets
 
-    # ──────────────────────────────────────────────────────────────────  STEP 2
+    ## Step 2: Upload JSON files
     st.markdown("## 📤 Step 2 – Upload Your JSON")
     files = st.file_uploader(
         "Drop JSON file(s) here (multi‑select allowed)",
         type="json",
         accept_multiple_files=True,
     )
-
-    chats = parse_json_chats(files) if files else []
+    chats, chat_names = parse_json_chats(files) if files else ([], [])
     if chats:
         st.success(f"{len(chats)} valid chat file(s) loaded.")
 
-    # ──────────────────────────────────────────────────────────────────  STEP 3
-    # Configure preprocessing
+    ## Step 3: Configure preprocessing
     st.markdown("## ⚙️ Step 3: Processing Parameters")
-    with st.form("params_form"):
-        model_id = st.text_input(
-            "Model ID",
-            value="meta-llama/Llama-3.2-1B",
-            help="Choose which LLM model you want to fine-tune on.",
-        )
-        target_name = st.text_input(
-            "Your Name",
-            value="Ren Hwa",
+    with st.form("data_prep_params_form"):
+        target_name = st.selectbox(
+            "Target Name",
+            options=chat_names if chat_names else ["Ren Hwa"],
             help="This helps filter out messages from you in the chat.",
         )
         system_prompt = st.text_area(
@@ -219,14 +142,13 @@ def main() -> None:
 
         submitted = st.form_submit_button("🚀 Process")
 
-    # ──────────────────────────────────────────────────────────────────  SUBMIT
+    # Submit data prep job
     if submitted:
         if not chats:
             st.error("Please upload at least one JSON export first.")
             st.stop()
 
         overrides = {
-            "model_id": model_id,
             "target_name": target_name,
             "system_prompt": system_prompt,
             "date_limit": date_limit,
@@ -237,10 +159,11 @@ def main() -> None:
         }
 
         run_id = submit_data_prep_job(chats, overrides)
-        if not run_id:
-            st.stop()
+        st.success(
+            f"🚀 Pre‑processing started! Your run ID is **{run_id}**. "
+            f"Take note of this ID to retrieve the correct model for inference later after fine-tuning.",
+        )
 
-        st.success(f"Job queued – **run_id = `{run_id}`**")
         with st.spinner("Processing…"):
             info = poll_job(f"{DATA_PREP_URL}/jobs/{run_id}")
 
@@ -250,23 +173,89 @@ def main() -> None:
 
         display_summary(info.get("stats", {}))
 
-        # ──────────────────────────────────────────────────────────  FINE‑TUNE
-        st.header("🎯 Fine‑tune")
-        if st.button("Start Fine‑tuning"):
-            tune_id = submit_fine_tune_job(run_id)
-            if not tune_id:
-                st.stop()
+        ## Step 4: Finetuning job
+        st.header("🎯 Step 4: Fine‑tuning")
+        with st.form("finetune_params_form"):
+            model_options = {
+                "unsloth/gemma-3-1b-it-unsloth-bnb-4bit": "gemma-3",
+                "unsloth/Llama-3.2-1B-Instruct-bnb-4bit": "llama-3.2",
+                "unsloth/Qwen3-1.7B-unsloth-bnb-4bit": "qwen3",
+            }
+            model_id = st.selectbox(
+                "Model ID",
+                options=list(model_options.keys()),
+                help="Select a base model checkpoint for fine-tuning.",
+            )
+
+            chat_template = model_options[model_id]
+
+            # LoRA settings
+            st.markdown("### 🪄 LoRA Parameters")
+            r = st.number_input(
+                "LoRA Rank (r)",
+                min_value=1,
+                value=16,
+                help="Dimensionality of the low-rank matrices. Smaller = faster, lower capacity.",
+            )
+            alpha = st.number_input(
+                "LoRA Alpha",
+                min_value=1,
+                value=16,
+                help="LoRA scaling factor. Typically same as r.",
+            )
+
+            # Training settings
+            st.markdown("### 🏋️ Training Parameters")
+            batch_size = st.number_input(
+                "Per-device Batch Size",
+                min_value=1,
+                value=1,
+                help="Number of examples per batch on each device.",
+            )
+            grad_accum = st.number_input(
+                "Gradient Accumulation Steps",
+                min_value=1,
+                value=4,
+                help="Simulate larger batch size by accumulating gradients.",
+            )
+            warmup_steps = st.number_input(
+                "Warmup Steps",
+                min_value=0,
+                value=5,
+                help="Number of warmup steps for the LR scheduler.",
+            )
+            max_steps = st.number_input(
+                "Max Steps",
+                min_value=1,
+                value=60,
+                help="Total training steps (batches × accumulation steps).",
+            )
+            # Submit fine-tune job
+            train_submitted = st.form_submit_button("🎯 Start Fine-Tuning")
+
+        if train_submitted:
+            overrides = {
+                "model_id": model_id,
+                "chat_template": chat_template,
+                "lora_r": r,
+                "lora_alpha": alpha,
+                "per_device_train_batch_size": batch_size,
+                "gradient_accumulation_steps": grad_accum,
+                "warmup_steps": warmup_steps,
+                "max_steps": max_steps,
+            }
+
+            submit_fine_tune_job(run_id, overrides)
 
             st.success("Fine‑tuning started")
             with st.spinner("Training…"):
-                t_info = poll_job(f"{FINE_TUNE_URL}/jobs/{tune_id}")
+                t_info = poll_job(f"{FINE_TUNE_URL}/jobs/{run_id}")
 
             if t_info.get("status") == "completed":
                 st.success("🎉 Fine‑tune finished!")
             else:
                 st.error("Fine‑tune did not complete.")
 
-    # ───────────────────────────────────────────────────────────────  FOOTER
     st.caption("Resonare © 2025")
 
 

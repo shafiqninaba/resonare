@@ -26,6 +26,7 @@ import yaml
 from dotenv import load_dotenv
 from fastapi import Body, FastAPI, HTTPException, Request
 from pydantic import BaseModel
+
 from src.processing import run_data_processing
 from src.utils.general import setup_standard_logging
 from src.utils.s3 import setup_s3_client

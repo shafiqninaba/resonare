@@ -1,28 +1,35 @@
 import json
+import textwrap
 import time
-import requests
-from typing import List, Dict, Optional, Any
-import streamlit as st
-import pandas as pd
+from collections import Counter
+from typing import Any, Dict, List, Tuple
 import matplotlib.pyplot as plt
+import pandas as pd
+import requests
+import streamlit as st
 
 
-def parse_json_chats(files) -> List[Dict[str, Any]]:
+def parse_json_chats(files) -> Tuple[List[Dict[str, Any]], List[str]]:
     """
-    Load and validate chat objects from uploaded JSON files.
+    Load and validate chat objects from uploaded JSON files,
+    and extract unique sender names from all messages.
 
     Args:
         files: Uploaded file objects from Streamlit.
 
     Returns:
-        List[Dict[str, Any]]: Validated chat dictionaries.
+        Tuple:
+            - List of validated chat dicts
+            - List of unique sender names, sorted by frequency
     """
     raw_chats = []
+    sender_counter = Counter()
+
     for file in files:
         try:
             data = json.load(file)
         except json.JSONDecodeError:
-            st.error(f"Cannot parse {file.name}")
+            st.error(f"❌ Could not parse {file.name}")
             continue
 
         chats = []
@@ -33,12 +40,23 @@ def parse_json_chats(files) -> List[Dict[str, Any]]:
                 chats = data["chats"]["list"]
             elif {"name", "messages"} <= data.keys():
                 chats = [data]
-        if not chats:
-            st.warning(f"No valid chat objects found in {file.name}")
-            continue
-        raw_chats.extend(chats)
 
-    return raw_chats
+        if not chats:
+            st.warning(f"⚠️ No valid chat objects found in {file.name}")
+            continue
+
+        for chat in chats:
+            messages = chat.get("messages", [])
+            for msg in messages:
+                sender = msg.get("from")
+                if sender:
+                    sender = sender.strip()
+                    sender_counter[sender] += 1
+
+            raw_chats.append(chat)
+
+    sorted_senders = [name for name, _ in sender_counter.most_common()]
+    return raw_chats, sorted_senders
 
 
 def poll_job(url: str, interval: int = 10) -> Dict[str, Any]:
@@ -118,14 +136,82 @@ def display_summary(stats: Dict[str, Any]) -> None:
     top_df["Percent"] = 100 * top_df["Blocks"] / total_blocks
 
     # ----- plot ------------------------------------------------------
+    def autopct_format(pct, all_vals):
+        absolute = int(round(pct * sum(all_vals) / 100.0))
+        return f"{pct:.1f}%\n({absolute})"
+
     fig, ax = plt.subplots(figsize=(6, 6))
     wedges, texts, autotexts = ax.pie(
         top_df["Blocks"],
         labels=top_df["Chat"],
-        autopct="%1.1f%%",
+        autopct=lambda pct: autopct_format(pct, top_df["Blocks"]),
         startangle=90,
         pctdistance=0.85,
     )
     ax.axis("equal")  # perfect circle
     plt.setp(autotexts, size=9, weight="bold")
     st.pyplot(fig)
+
+
+# UI Helper Functions
+def show_export_examples() -> None:
+    """Visualise Telegram export formats (all‑chat vs single‑chat)."""
+    st.markdown("### 🧾 Telegram Export Formats")
+
+    st.markdown("""
+    Telegram exports can be structured in two ways:
+
+    - **All chats** (multi-chat export): your JSON will contain a top-level `chats.list`
+    - **Individual chat**: the file itself is a single `dict` with `messages`
+
+    Both are supported by Resonare.
+    """)
+
+    col1, col2 = st.columns(2, gap="medium")
+
+    JSON_ALL_CHATS: str = textwrap.dedent(
+        """
+        {
+        "about": "...",
+        "chats": {
+            "about": "...",
+            "list": [
+            {
+                "name": "salt",
+                "messages": [
+                {"id": 71179, "from": "salt", "text": [...], ...},
+                {"id": 71187, "from": "Ren Hwa", "text": "Thx", ...}
+                ]
+            }
+            ]
+        }
+        }
+    """
+    ).strip()
+
+    JSON_SINGLE_CHAT: str = textwrap.dedent(
+        """
+        {
+        "name": "salt",
+        "type": "personal_chat",
+        "messages": [
+            {"id": 71179, "from": "salt", "text": [...], ...},
+            {"id": 71187, "from": "Ren Hwa", "text": "Thx", ...}
+        ]
+        }
+    """
+    ).strip()
+
+    with col1:
+        st.image(
+            "assets/export_all.png", caption="All‑chat export", use_container_width=True
+        )
+        st.code(JSON_ALL_CHATS, language="json")
+
+    with col2:
+        st.image(
+            "assets/export_individual.png",
+            caption="Single‑chat export",
+            use_container_width=True,
+        )
+        st.code(JSON_SINGLE_CHAT, language="json")
