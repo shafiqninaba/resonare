@@ -6,12 +6,11 @@ import hydra
 import torch
 from datasets import load_dataset
 from dotenv import load_dotenv
+from src.general_utils import setup_logger, upload_directory_to_s3
 from transformers import DataCollatorForSeq2Seq, TrainingArguments
 from trl import SFTTrainer
 from unsloth import FastLanguageModel, is_bfloat16_supported
 from unsloth.chat_templates import get_chat_template, standardize_sharegpt
-
-from src.general_utils import setup_logger, upload_directory_to_s3
 
 load_dotenv()
 
@@ -168,7 +167,7 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 f"{trainer_stats.metrics['train_runtime']} seconds used for training."
             )
             logger.info(
-                f"{round(trainer_stats.metrics['train_runtime']/60, 2)} minutes used for training."
+                f"{round(trainer_stats.metrics['train_runtime'] / 60, 2)} minutes used for training."
             )
             logger.debug(f"Peak reserved memory = {used_memory} GB.")
             logger.debug(

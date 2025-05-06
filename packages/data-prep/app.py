@@ -2,7 +2,7 @@
 """
 Chat‑Data‑Prep API
 ==================
-POST /data-prep/process      ── client sends ONE merged JSON payload (application/json)
+POST /data-prep/process
 GET  /data-prep/{run_id}/status
 GET  /data-prep/queue
 GET  /health
@@ -12,21 +12,20 @@ import asyncio
 import json
 import logging
 import os
+import tempfile
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import httpx
 import uvicorn
-import tempfile
-from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
-from pydantic import BaseModel
 import yaml
-
-from enum import Enum
+from dotenv import load_dotenv
+from fastapi import Body, FastAPI, HTTPException, Request
+from pydantic import BaseModel
 from src.processing import run_data_processing
 from src.utils.general import setup_standard_logging
 from src.utils.s3 import setup_s3_client
@@ -169,11 +168,11 @@ async def _worker():
                 job_info.stats = stats
                 logger.info(f"Data processing for job {run_id} completed successfully")
 
-                # Post-processing trigger
-                logger.info(f"Triggering finetuning for job {run_id}")
-                await finetuning_hook(
-                    endpoint="http://localhost:8020/fine-tune", run_id=run_id
-                )
+                # # Post-processing trigger
+                # logger.info(f"Triggering finetuning for job {run_id}")
+                # await finetuning_hook(
+                #     endpoint="http://fine-tuning:8001/fine-tune", run_id=run_id
+                # )
 
             except Exception as e:
                 job_info.status = JobStatus.FAILED
@@ -241,82 +240,40 @@ app = FastAPI(
 )
 
 
-@app.post("/data-prep/process", response_model=APIResponse)
+@app.post("/process", response_model=APIResponse)
 async def submit_job(
-    request: Request,
-    overrides: Optional[Dict[str, Any]] = None,
+    payload: Dict[str, Any] = Body(...),
 ) -> APIResponse:
-    """Receives a JSON chat export and queues a data preprocessing job.
-
-    The request must be a single JSON payload (Content-Type: application/json)
-    that is either:
-      - a list of chat objects, or
-      - a Telegram-style export object with chats inside.
-
-    The raw request is written to a temporary file and passed to the background
-    worker via an async job queue.
-
-    Args:
-        request (Request): Incoming HTTP request with the JSON chat export.
-        overrides (Optional[Dict[str, Any]]): Optional configuration overrides.
-            These can include target_name, system_prompt, date_limit, etc.
-
-    Returns:
-        APIResponse: Object containing run_id and queue status.
-
-    Raises:
-        HTTPException: On content type errors, malformed JSON, or bad structure.
-    """
-    # Generate a new unique job ID
     run_id = uuid.uuid4().hex
 
-    # Check if S3 client is available (setup during app lifespan)
     if "s3_client" not in resources:
-        raise HTTPException(
-            status_code=500,
-            detail="S3 client not initialized. Required for uploads.",
-        )
+        raise HTTPException(status_code=500, detail="S3 client not initialized.")
 
-    # Check for duplicate job ID (highly unlikely with uuid4, but safe)
     if run_id in job_status:
         raise HTTPException(
             status_code=409,
             detail=f"Job with run_id {run_id} already exists with status {job_status[run_id].status}",
         )
 
-    # Validate content type header
-    content_type = request.headers.get("content-type", "").split(";")[0]
-    if content_type != "application/json":
-        raise HTTPException(
-            status_code=415,
-            detail="Content-Type must be application/json",
-        )
+    chats = payload.get("chats")  # the actual merged chat data
+    overrides = payload.get(
+        "overrides", {}
+    )  # any additional parameters for data processing
 
-    # Parse JSON body (raw bytes for storage, parsed for validation)
-    try:
-        body_bytes = await request.body()
-        parsed_data: Any = json.loads(body_bytes)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Malformed JSON")
+    if not isinstance(chats, (list, dict)):
+        raise HTTPException(status_code=400, detail="chats must be a list or object")
 
-    # Sanity check: we expect either a list of chats or a Telegram export object
-    if not isinstance(parsed_data, (list, dict)):
-        raise HTTPException(
-            status_code=400,
-            detail="Body must be a list of chats or a Telegram export object",
-        )
-
-    # Write raw request to a temp file for processing
     temp_dir = Path(tempfile.gettempdir()) / "chat_data_prep"
     temp_dir.mkdir(parents=True, exist_ok=True)
 
     raw_path = temp_dir / f"{run_id}.json"
-    raw_path.write_bytes(body_bytes)
+    raw_path.write_text(json.dumps(chats), encoding="utf-8")
 
-    # Store path for the worker to access
-    resources["inputs"][run_id] = {"path": str(raw_path), "overrides": overrides or {}}
+    resources["inputs"][run_id] = {
+        "path": str(raw_path),
+        "overrides": overrides,
+    }
 
-    # Register job metadata
     job_status[run_id] = JobInfo(
         run_id=run_id,
         status=JobStatus.QUEUED,
@@ -324,7 +281,6 @@ async def submit_job(
         created_at=datetime.now(),
     )
 
-    # Enqueue the job
     await job_queue.put(run_id)
 
     return APIResponse(
@@ -334,7 +290,7 @@ async def submit_job(
     )
 
 
-@app.get("/data-prep/jobs")
+@app.get("/jobs")
 async def get_all_job_status() -> Dict[str, JobInfo]:
     """Return the full mapping of all job statuses.
 
@@ -344,7 +300,7 @@ async def get_all_job_status() -> Dict[str, JobInfo]:
     return job_status
 
 
-@app.get("/data-prep/jobs/{run_id}")
+@app.get("/jobs/{run_id}")
 async def get_job_status(run_id: str) -> JobInfo:
     """Retrieve the status and metadata of a specific preprocessing job.
 
@@ -358,11 +314,13 @@ async def get_job_status(run_id: str) -> JobInfo:
         HTTPException: If job ID is not found.
     """
     if run_id not in job_status:
-        raise HTTPException(404, "Job not found")
+        raise HTTPException(
+            status_code=404, detail=f"Job with run_id {run_id} not found"
+        )
     return job_status[run_id]
 
 
-@app.get("/data-prep/system/queue")
+@app.get("/queue")
 async def get_queue_status() -> Dict[str, Any]:
     """Get the status of all jobs currently in the queue.
 
@@ -376,17 +334,18 @@ async def get_queue_status() -> Dict[str, Any]:
     }
 
 
-@app.get("/data-prep/system/health")
+@app.get("/health")
 async def get_health_status() -> Dict[str, str]:
     """Health check endpoint that verifies service readiness.
 
     Returns:
         Dict[str, str]: Simple service and S3 health status.
     """
-    healthy = resources.get("s3_client") is not None
+    s3_status = "connected" if "s3_client" in resources else "disconnected"
     return {
         "status": "healthy",
-        "s3": "connected" if healthy else "missing",
+        "message": "Fine-tuning API is operational",
+        "s3_connection": s3_status,
     }
 
 
@@ -401,6 +360,4 @@ if __name__ == "__main__":
     with open(logging_config_path, encoding="utf-8") as file:
         log_config = yaml.safe_load(file)
 
-    uvicorn.run(
-        "app:app", host="0.0.0.0", port=8000, reload=True, log_config=log_config
-    )
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, log_config=log_config)

@@ -19,7 +19,6 @@ import tiktoken
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
-
 from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast
 
 from ..models import Chat

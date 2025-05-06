@@ -1,7 +1,9 @@
 [project]
 dependencies = [
   "requests>=2.32.3",
-  "streamlit>=1.45.0"
+  "streamlit>=1.45.0",
+  "pandas",
+  "matplotlib"
 ]
 description = "Add your description here"
 name = "frontend"

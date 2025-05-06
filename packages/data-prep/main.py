@@ -45,9 +45,7 @@ from typing import List, Optional
 import boto3
 import hydra
 from omegaconf import DictConfig
-
 from src.models import Chat, Message
-
 from src.utils.general import setup_standard_logging
 from src.utils.processing import (
     calculate_chat_stats,
