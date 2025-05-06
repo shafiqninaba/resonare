@@ -18,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import httpx
 import uvicorn
 import tempfile
 from dotenv import load_dotenv
@@ -48,6 +49,8 @@ setup_standard_logging(
 
 # models
 class JobStatus(str, Enum):
+    """Enum representing the current status of a job in the queue."""
+
     QUEUED = "queued"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -55,16 +58,36 @@ class JobStatus(str, Enum):
 
 
 class JobInfo(BaseModel):
+    """Metadata and lifecycle information for a single preprocessing job.
+
+    Attributes:
+        run_id (str): Unique identifier for the job.
+        status (JobStatus): Current status of the job (e.g. queued, running).
+        position_in_queue (Optional[int]): Position of the job in the queue, if applicable.
+        created_at (datetime): Timestamp when the job was submitted.
+        started_at (Optional[datetime]): Timestamp when processing started.
+        completed_at (Optional[datetime]): Timestamp when processing completed or failed.
+        error (Optional[str]): Error message if the job failed.
+    """
+
     run_id: str
     status: JobStatus
     position_in_queue: Optional[int] = None
-    created_at: datetime
+    created_at: datetime = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     error: Optional[str] = None
 
 
 class APIResponse(BaseModel):
+    """Standard response returned after submitting a preprocessing job.
+
+    Attributes:
+        status (str): Status of the request (e.g. "queued").
+        message (str): Human-readable message for client feedback.
+        run_id (str): Unique identifier for the submitted job.
+    """
+
     status: str
     message: str
     run_id: str
@@ -105,7 +128,18 @@ async def lifespan(app: FastAPI):
 
 # worker process
 async def _worker():
-    """Worker process that pulls jobs from queue and runs them one at a time"""
+    """Worker process that pulls jobs from the queue and runs them sequentially.
+
+    This coroutine continuously:
+      - Retrieves the next job from the `job_queue`.
+      - Marks the job as running, updates the queue position, and starts processing.
+      - Calls `run_data_processing` on a background thread.
+      - On success, marks the job as completed and triggers an optional finetuning hook.
+      - On failure, captures the error and updates job status accordingly.
+
+    Returns:
+        None
+    """
     global job_running
 
     while True:
@@ -129,54 +163,65 @@ async def _worker():
                 await asyncio.to_thread(run_data_processing, run_id, resources, spec)
                 job_info.status = JobStatus.COMPLETED
                 job_info.completed_at = datetime.now()
-                logger.info(f"Job {run_id} completed successfully")
+                logger.info(f"Data processing for job {run_id} completed successfully")
 
                 # Post-processing trigger
                 logger.info(f"Triggering finetuning for job {run_id}")
-                await post_process_hook(run_id)
+                await finetuning_hook(
+                    endpoint="http://localhost:8020/fine-tune", run_id=run_id
+                )
 
             except Exception as e:
                 job_info.status = JobStatus.FAILED
                 job_info.error = str(e)
-                job_info.completed_at = datetime.now()
                 logger.error(f"Job {run_id} failed: {str(e)}")
+
             finally:
                 job_running = False
                 job_queue.task_done()
+
         except asyncio.CancelledError:
             logger.info("Job processor task was cancelled")
             break
+
         except Exception as e:
             logger.error(f"Error in job processor: {str(e)}")
             await asyncio.sleep(5)  # Wait before retrying
 
 
-async def post_process_hook(run_id: str):
-    """
-    Called immediately after a job is marked COMPLETED.
-    You can:
-    - Notify another service
-    - Trigger fine-tuning
-    - Log output paths
-    - Push to a message queue
-    """
-    logger.info(f"[HOOK] Job {run_id} completed. Triggering post-processing...")
+async def finetuning_hook(endpoint: str, run_id: str) -> None:
+    """Triggers a downstream fine-tuning job via HTTP POST.
 
-    # Example: trigger fine-tune via REST API
-    import httpx
+    Args:
+        endpoint (str): URL of the fine-tuning service to notify.
+        run_id (str): Unique job identifier for the completed preprocessing run.
 
+    Returns:
+        None
+
+    Logs:
+        - Status code of the downstream trigger.
+        - Error details if the hook fails.
+    """
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "http://localhost:8020/fine-tune", json={"run_id": run_id}, timeout=10
+            response = await client.post(endpoint, json={"run_id": run_id}, timeout=10)
+            logger.info(
+                f"[HOOK] Fine-tune trigger status for job {run_id}: {response.status_code}"
             )
-            logger.info(f"[HOOK] Fine-tune trigger status: {response.status_code}")
     except Exception as e:
-        logger.error(f"[HOOK] Failed to trigger fine-tune: {e}")
+        logger.error(f"[HOOK] Failed to trigger fine-tune for job {run_id}: {e}")
 
 
-def update_queue_positions():
-    """Update position in queue for all queued jobs"""
+def update_queue_positions() -> None:
+    """Updates the `position_in_queue` field for all currently queued jobs.
+
+    This ensures that clients polling for job status can view their
+    relative position in the queue.
+
+    Returns:
+        None
+    """
     queued_jobs = [
         job_id for job_id, info in job_status.items() if info.status == JobStatus.QUEUED
     ]
@@ -193,77 +238,147 @@ app = FastAPI(
 
 
 @app.post("/data-prep/process", response_model=APIResponse)
-async def process_json(request: Request):
-    """
-    Start a data processing job with the specified run ID
+async def submit_data_prep_job(request: Request) -> APIResponse:
+    """Receives a JSON chat export and queues a data preprocessing job.
 
-    The job will be queued and processed when resources are available
+    The request must be a single JSON payload (Content-Type: application/json)
+    that is either:
+      - a list of chat objects, or
+      - a Telegram-style export object with chats inside.
+
+    The raw request is written to a temporary file and passed to the background
+    worker via an async job queue.
+
+    Args:
+        request (Request): Incoming HTTP request with the JSON chat export.
+
+    Returns:
+        APIResponse: Object containing run_id and queue status.
+
+    Raises:
+        HTTPException: On content type errors, malformed JSON, or bad structure.
     """
+    # Generate a new unique job ID
     run_id = uuid.uuid4().hex
 
-    # Validate run_id
-    if not run_id:
-        raise HTTPException(status_code=400, detail="Invalid run_id provided")
-
-    # Validate S3 client exists
+    # Check if S3 client is available (setup during app lifespan)
     if "s3_client" not in resources:
-        raise HTTPException(status_code=500, detail="S3 client not initialized")
+        raise HTTPException(
+            status_code=500,
+            detail="S3 client not initialized. Required for uploads.",
+        )
 
-    # Check if job already exists
+    # Check for duplicate job ID (highly unlikely with uuid4, but safe)
     if run_id in job_status:
         raise HTTPException(
             status_code=409,
             detail=f"Job with run_id {run_id} already exists with status {job_status[run_id].status}",
         )
 
-    if request.headers.get("content-type", "").split(";")[0] != "application/json":
-        raise HTTPException(415, "Content‑Type must be application/json")
+    # Validate content type header
+    content_type = request.headers.get("content-type", "").split(";")[0]
+    if content_type != "application/json":
+        raise HTTPException(
+            status_code=415,
+            detail="Content-Type must be application/json",
+        )
 
+    # Parse JSON body (raw bytes for storage, parsed for validation)
     try:
-        body_bytes = await request.body()  # raw bytes (cached)
-        data: Any = json.loads(body_bytes)
+        body_bytes = await request.body()
+        parsed_data: Any = json.loads(body_bytes)
     except Exception:
-        raise HTTPException(400, "Malformed JSON")
+        raise HTTPException(status_code=400, detail="Malformed JSON")
 
-    # quick sanity‑check
-    if not isinstance(data, (list, dict)):
-        raise HTTPException(400, "Body must be a list or a Telegram export object")
+    # Sanity check: we expect either a list of chats or a Telegram export object
+    if not isinstance(parsed_data, (list, dict)):
+        raise HTTPException(
+            status_code=400,
+            detail="Body must be a list of chats or a Telegram export object",
+        )
 
-    # write to OS temp dir
-    tmp_root = Path(tempfile.gettempdir()) / "chat_data_prep"
-    tmp_root.mkdir(exist_ok=True)
-    raw_path = tmp_root / f"{run_id}.json"
+    # Write raw request to a temp file for processing
+    temp_dir = Path(tempfile.gettempdir()) / "chat_data_prep"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    raw_path = temp_dir / f"{run_id}.json"
     raw_path.write_bytes(body_bytes)
 
+    # Store path for the worker to access
     resources["inputs"][run_id] = {"path": str(raw_path)}
 
+    # Register job metadata
     job_status[run_id] = JobInfo(
         run_id=run_id,
         status=JobStatus.QUEUED,
         position_in_queue=job_queue.qsize() + (1 if job_running else 0),
         created_at=datetime.now(),
     )
+
+    # Enqueue the job
     await job_queue.put(run_id)
 
-    return APIResponse(status="queued", message="JSON accepted", run_id=run_id)
+    return APIResponse(
+        status="queued",
+        message="Job accepted and enqueued",
+        run_id=run_id,
+    )
 
 
-@app.get("/data-prep/{run_id}/status")
-async def status(run_id: str):
+@app.get("/data-prep/jobs")
+async def get_all_job_status() -> Dict[str, JobInfo]:
+    """Return the full mapping of all job statuses.
+
+    Returns:
+        Dict[str, JobInfo]: All known jobs, regardless of status.
+    """
+    return job_status
+
+
+@app.get("/data-prep/jobs/{run_id}")
+async def get_job_status(run_id: str) -> JobInfo:
+    """Retrieve the status and metadata of a specific preprocessing job.
+
+    Args:
+        run_id (str): Unique job identifier.
+
+    Returns:
+        JobInfo: Metadata about the specified job.
+
+    Raises:
+        HTTPException: If job ID is not found.
+    """
     if run_id not in job_status:
-        raise HTTPException(404, "run_id not found")
+        raise HTTPException(404, "Job not found")
     return job_status[run_id]
 
 
-@app.get("/data-prep/queue")
-async def queue():
-    return {"running": job_running, "queue_size": job_queue.qsize(), "jobs": job_status}
+@app.get("/data-prep/system/queue")
+async def get_queue_status() -> Dict[str, Any]:
+    """Get the status of all jobs currently in the queue.
+
+    Returns:
+        Dict[str, Any]: Job queue summary including queue size and all job statuses.
+    """
+    return {
+        "running": job_running,
+        "queue_size": job_queue.qsize(),
+        "jobs": job_status,
+    }
 
 
-@app.get("/data-prep/health")
-async def health():
-    ok = resources.get("s3_client") is not None
-    return {"status": "healthy", "s3": "connected" if ok else "missing"}
+@app.get("/data-prep/system/health")
+async def get_health_status() -> Dict[str, str]:
+    """Health check endpoint that verifies service readiness.
+
+    Returns:
+        Dict[str, str]: Simple service and S3 health status.
+    """
+    healthy = resources.get("s3_client") is not None
+    return {
+        "status": "healthy",
+        "s3": "connected" if healthy else "missing",
+    }
 
 
 if __name__ == "__main__":

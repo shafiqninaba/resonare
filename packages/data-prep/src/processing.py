@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 def run_data_processing(
     run_id: str,
     resources: Dict,
-    input_spec: Dict[str, str],  # {"path": "/abs/path/raw.json"}
+    input_spec: Dict[str, str],
 ) -> None:
     """
     End‑to‑end preprocessing worker.
@@ -40,16 +40,15 @@ def run_data_processing(
     s3_client: boto3.client | None = resources.get("s3_client")
 
     # --------------------------------------------------------------------
-    # 0) Load raw chats from temp file, then delete the file when done
+    # 1) Load raw chats from temp file, then delete the file when done
     # --------------------------------------------------------------------
     path = Path(input_spec["path"])
+    raw_chats: List[Dict] = []
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
 
         if isinstance(data, list):
             raw_chats = [c for c in data if {"name", "messages"} <= c.keys()]
-            if not raw_chats:
-                raise ValueError("List contained no valid chat objects")
 
         elif isinstance(data, dict) and "chats" in data and "list" in data["chats"]:
             raw_chats = data["chats"]["list"]
@@ -60,6 +59,9 @@ def run_data_processing(
         else:
             raise ValueError("Unrecognised JSON structure")
 
+        if not raw_chats:
+            raise ValueError("List contained no valid chat objects")
+
     except Exception as e:
         logger.error(f"Failed to load raw chats from {path}: {e}")
         raise
@@ -68,16 +70,6 @@ def run_data_processing(
         path.unlink(missing_ok=True)  # always remove temp file
 
     logger.info("Loaded %s raw chats from %s", len(raw_chats), path)
-
-    # ---------------------
-    # 1) Tokenizer loading
-    # ---------------------
-    # We need a tokenizer to split chat messages into tokens and obtain token counts, for chunking and filtering:
-    #  - Prefer the same tokenizer family (e.g. BPE, SentencePiece, WordPiece) as our target finetuning model for accuracy.
-    #  - Use HuggingFace’s AutoTokenizer to load the specific tokenizer for the target model.
-    #  - If that fails, fall back to OpenAI’s tiktoken (BPE) for speed and API‑compatibility.
-    logger.info(f"Loading tokenizer for model {cfg.model_id} for token counting...")
-    tokenizer = load_tokenizer(model_name=cfg.model_id)
 
     # -------------------------------
     # 2) Export: Raw Chats - local / s3
@@ -115,6 +107,16 @@ def run_data_processing(
         except Exception as e:
             logger.error(f"Failed to upload raw chats to S3: {e}")
             raise
+
+    # ---------------------
+    # 3) Tokenizer loading
+    # ---------------------
+    # We need a tokenizer to split chat messages into tokens and obtain token counts, for chunking and filtering:
+    #  - Prefer the same tokenizer family (e.g. BPE, SentencePiece, WordPiece) as our target finetuning model for accuracy.
+    #  - Use HuggingFace’s AutoTokenizer to load the specific tokenizer for the target model.
+    #  - If that fails, fall back to OpenAI’s tiktoken (BPE) for speed and API‑compatibility.
+    logger.info(f"Loading tokenizer for model {cfg.model_id} for token counting...")
+    tokenizer = load_tokenizer(model_name=cfg.model_id)
 
     # --------------------------------------------
     # 4) Build Chat objects
