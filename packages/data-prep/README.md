@@ -158,7 +158,7 @@ flowchart TD
         D --> R[Return run_id to Client];
     end
 
-    subgraph Async Worker (Background Process)
+    subgraph Async Worker Background Process
         E[Dequeue run_id from job_queue];
         E --> F[Load JSON from temp file];
         F --> G[Execute Processing Pipeline, Steps 1-8];
