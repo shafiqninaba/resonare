@@ -28,7 +28,7 @@ graph TD
     A[Load and parse raw JSON] --> B[Upload raw JSON to S3];
     B --> C[Load model specific tokenizer];
     C --> D[Build Chat & Message objects<br/>+ initial filtering];
-    D --> E[Chunk chats into blocks<br/>(time & token constraints)];
+    D --> E[Chunk chats into blocks<br/>time & token constraints];
     E --> F[Merge consecutive messages<br/>+ add optional system prompt];
     F --> G[Compute & log chat statistics];
     G --> H[Export processed.json + train.jsonl to S3];
@@ -161,9 +161,9 @@ flowchart TD
     subgraph Async Worker (Background Process)
         E[Dequeue run_id from job_queue];
         E --> F[Load JSON from temp file];
-        F --> G[Execute Processing Pipeline (Steps 1-8)];
-        G --> H[Update job_status (COMPLETED/FAILED)];
-        H --> I[Write processed files (local/S3)];
+        F --> G[Execute Processing Pipeline, Steps 1-8];
+        G --> H[Update job_status, COMPLETED/FAILED];
+        H --> I[Write processed files, local/S3];
     end
 
     D ==> E; # Queue link
