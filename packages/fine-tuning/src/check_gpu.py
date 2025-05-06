@@ -1,8 +1,9 @@
-import torch
 import logging
-from omegaconf import OmegaConf, DictConfig
-import hydra
 import traceback
+
+import hydra
+import torch
+from omegaconf import DictConfig, OmegaConf
 
 
 @hydra.main(version_base=None, config_path="../conf", config_name="config")

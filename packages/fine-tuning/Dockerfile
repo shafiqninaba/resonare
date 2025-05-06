@@ -35,12 +35,12 @@ WORKDIR /app
 
 # Enable bytecode compilation
 ENV UV_COMPILE_BYTECODE=1
-ENV PYTHONIOENCODING utf8
-ENV LANG "C.UTF-8"
-ENV LC_ALL "C.UTF-8"
-ENV NVIDIA_VISIBLE_DEVICES all
-ENV NVIDIA_DRIVER_CAPABILITIES compute,utility
-ENV LD_LIBRARY_PATH /usr/local/cuda/lib64:$LD_LIBRARY_PATH
+ENV PYTHONIOENCODING=utf8
+ENV LANG="C.UTF-8"
+ENV LC_ALL="C.UTF-8"
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 
 # Copy from the cache instead of linking since it's a mounted volume
 ENV UV_LINK_MODE=copy
@@ -61,5 +61,4 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
 
-
-CMD ["python", "src/fine-tuning/fine_tune.py"]
+CMD ["python", "main.py"]

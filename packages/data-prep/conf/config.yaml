@@ -1,0 +1,45 @@
+# Hydra configuration
+hydra:
+  run:
+    dir: "."  # Run tasks in the current directory
+
+# Input and output file paths
+# - Telegram allows exporting chats either as a single JSON file (often named result.json) 
+#   or as multiple JSON files, one per chat, stored in a directory.
+# - Use "mode" to switch between these two formats depending on your export type.
+input:
+  mode: "file"            # Mode to specify how chat data is loaded:
+                          # - "file": Load a single JSON file (e.g., result.json).
+                          # - "dir": Load multiple JSON files from a directory.
+  file: "./data/raw/result.json"  # Path to the single JSON file containing all chats (e.g., Telegram export).
+  dir:  "./data/raw/chats/"      # Path to the directory containing individual chat JSON files.
+
+output:
+  modes: ["local", "s3"]    # Choose one or multiple modes: ["local"], ["s3"], ["local", "s3"]
+  local_dir: "./data/processed/"    # Local output directory
+  s3_bucket: "resonsare-test-bucket"    # S3 bucket name
+  s3_region: "ap-southeast-1"           # AWS region
+
+# Model settings
+# This is the model we're fine-tuning, so we use its tokenizer to count tokens for chunking.
+# Different models have different tokenizers, so we try to use the same model’s tokenizer for accuracy.
+# If the model specific tokenizer can't be loaded, we fall back to TikToken (used by OpenAI models).
+model_id: "meta-llama/Llama-3.2-1B"  # HuggingFace model ID of the fine-tuning target (e.g., LLaMA)
+
+# Chat processing options
+target_name: "Ren Hwa"  # Your name in the conversation; converted to "system" in output
+system_prompt: "You are Ren Hwa, a kind, sensitive and somewhat bubbly guy."  # System prompt for the model
+date_limit: None        # Optional: skip messages before this date (e.g., "2025-01-01")
+
+# Conversation block settings
+# Messages are grouped into blocks if they occur within `convo_block_thereshold_secs` of each other.
+# This temporal threshold helps preserve coherent chunks of dialogue for training.
+# Token limits help ensure blocks are both consistent and efficient for training: too short = weak context, too long = inefficient.
+convo_block_thereshold_secs: 3600  # Max time gap (in seconds) between messages in a block
+min_tokens_per_block: 300          # Discard blocks shorter than this (low context)
+max_tokens_per_block: 800         # Split or discard blocks longer than this (too large for model input)
+
+# Message formatting
+# Each message in a block is prefixed with this delimiter, simulating the flow of chat, e.g. "User": >>> Hello!"
+# Note that newlines separate consecutive messages from the same speaker.
+message_delimiter: ">>>"  # Prefix for each message line

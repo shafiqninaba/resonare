@@ -1,0 +1,9 @@
+[project]
+dependencies = [
+  "fastapi[standard]>=0.115.12"
+]
+description = "Add your description here"
+name = "inference"
+readme = "README.md"
+requires-python = ">=3.12"
+version = "0.1.0"

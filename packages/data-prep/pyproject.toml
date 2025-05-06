@@ -1,6 +1,18 @@
 [project]
 dependencies = [
-  "boto3>=1.37.35"
+  "boto3>=1.37.35",
+  "dotenv>=0.9.9",
+  "fastapi[standard]>=0.115.12",
+  "hydra-core>=1.3.2",
+  "loguru>=0.7.3",
+  "pydantic>=2.11.3",
+  "python-json-logger>=3.3.0",
+  "python-multipart>=0.0.20",
+  "rich>=14.0.0",
+  "ruff>=0.11.6",
+  "tiktoken>=0.9.0",
+  "transformers>=4.51.3",
+  "uvicorn>=0.34.2",
 ]
 description = "Add your description here"
 name = "data-prep"
