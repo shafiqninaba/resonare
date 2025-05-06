@@ -166,7 +166,7 @@ flowchart TD
         H --> I[Write processed files, local/S3];
     end
 
-    D ==> E; # Queue link
+    D ==> E;
 ```
 
 ### Process Flow Description
