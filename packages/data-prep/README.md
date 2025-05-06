@@ -282,13 +282,13 @@ Choose the method that best suits your needs:
 *   **Uvicorn:** (Provides auto-reload)
     ```bash
     # Using uv
-    uv run uvicorn app:app --host 0.0.0.0 --port 8018 --reload
+    uv run uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 
 *   **FastAPI CLI:** (Requires `fastapi[standard]`)
     ```bash
     # Using uv
     # uv add "fastapi[standard]" # If needed
-    # uv run fastapi dev app:app --host 0.0.0.0 --port 8016
+    # uv run fastapi dev app:app --host 0.0.0.0 --port 8000
     ```
 ---
 
@@ -319,12 +319,12 @@ curl -X POST -H "Content-Type: application/json" \
 
 curl -X POST -H "Content-Type: application/json" \
      --data @/Users/lowrenhwa/Desktop/resonare/packages/data-prep/data/raw/result.json \
-     http://localhost:8020/data-prep/process
+     http://localhost:8000/data-prep/process
 # Example Response: {"status": "queued", "message": "Job accepted and enqueued", "run_id": "a1b2c3d4-e5f6-7890-abcd-ef0123456789"}
 
 # 2) Check the status of a specific job using the run_id
 RUN_ID="a1b2c3d4-e5f6-7890-abcd-ef0123456789" # Replace with your actual run_id
-curl http://localhost:8015/data-prep/jobs/${RUN_ID}
+curl http://localhost:8000/data-prep/jobs/${RUN_ID}
 # Example Response (Completed Job):
 # {
 #  "run_id": "a1b2c3d4-e5f6-7890-abcd-ef0123456789",
@@ -336,7 +336,7 @@ curl http://localhost:8015/data-prep/jobs/${RUN_ID}
 # }
 
 # 3) View the status of ALL jobs
-curl http://localhost:8015/data-prep/jobs
+curl http://localhost:8000/data-prep/jobs
 # Example Response:
 # {
 #   "a1b2c3d4-e5f6-7890-abcd-ef0123456789": { "run_id": "...", "status": "COMPLETED", ... },
@@ -344,7 +344,7 @@ curl http://localhost:8015/data-prep/jobs
 # }
 
 # 4) Get system queue information
-curl http://localhost:8015/data-prep/system/queue
+curl http://localhost:8000/data-prep/system/queue
 # Example Response (Idle system):
 # {
 #   "running": false,
@@ -355,6 +355,6 @@ curl http://localhost:8015/data-prep/system/queue
 # }
 
 # 5) Perform a health check
-curl http://localhost:8015/data-prep/system/health
+curl http://localhost:8000/data-prep/system/health
 # Example Response (Healthy, S3 connected): {"status": "healthy", "s3": "connected"}
 # Example Response (Healthy, S3 missing/not configured): {"status": "healthy", "s3": "missing"}
