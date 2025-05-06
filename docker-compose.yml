@@ -40,9 +40,14 @@ services:
   #     - data-prep
   #   develop:
   #     watch:
+  #       # only sync source code & main script
   #       - action: sync
-  #         path: ./packages/fine-tuning
-  #         target: /app
+  #         path: ./packages/fine-tuning/src               # host
+  #         target: /app/src                             # container
+  #       - action: sync
+  #         path: ./packages/fine-tuning/main.py
+  #         target: /app/main.py
+
 
   # inference:
   #   build:
@@ -60,9 +65,13 @@ services:
   #     - fine-tuning
   #   develop:
   #     watch:
+  #       # only sync source code & main script
   #       - action: sync
-  #         path: ./packages/inference
-  #         target: /app
+  #         path: ./packages/inference/src               # host
+  #         target: /app/src                             # container
+  #       - action: sync
+  #         path: ./packages/inference/main.py
+  #         target: /app/main.py
 
   frontend:
     build:
