@@ -77,6 +77,7 @@ class JobInfo(BaseModel):
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     error: Optional[str] = None
+    stats: Optional[Dict[str, Any]] = None
 
 
 class APIResponse(BaseModel):
@@ -160,9 +161,12 @@ async def _worker():
             # run the data processing in a separate thread
             try:
                 # Run synchronously to block the queue processing until complete
-                await asyncio.to_thread(run_data_processing, run_id, resources, spec)
+                stats = await asyncio.to_thread(
+                    run_data_processing, run_id, resources, spec
+                )
                 job_info.status = JobStatus.COMPLETED
                 job_info.completed_at = datetime.now()
+                job_info.stats = stats
                 logger.info(f"Data processing for job {run_id} completed successfully")
 
                 # Post-processing trigger
@@ -238,7 +242,10 @@ app = FastAPI(
 
 
 @app.post("/data-prep/process", response_model=APIResponse)
-async def submit_data_prep_job(request: Request) -> APIResponse:
+async def submit_job(
+    request: Request,
+    overrides: Optional[Dict[str, Any]] = None,
+) -> APIResponse:
     """Receives a JSON chat export and queues a data preprocessing job.
 
     The request must be a single JSON payload (Content-Type: application/json)
@@ -251,6 +258,8 @@ async def submit_data_prep_job(request: Request) -> APIResponse:
 
     Args:
         request (Request): Incoming HTTP request with the JSON chat export.
+        overrides (Optional[Dict[str, Any]]): Optional configuration overrides.
+            These can include target_name, system_prompt, date_limit, etc.
 
     Returns:
         APIResponse: Object containing run_id and queue status.
@@ -305,7 +314,7 @@ async def submit_data_prep_job(request: Request) -> APIResponse:
     raw_path.write_bytes(body_bytes)
 
     # Store path for the worker to access
-    resources["inputs"][run_id] = {"path": str(raw_path)}
+    resources["inputs"][run_id] = {"path": str(raw_path), "overrides": overrides or {}}
 
     # Register job metadata
     job_status[run_id] = JobInfo(

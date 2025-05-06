@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 import boto3
 import hydra
@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 
 def run_data_processing(
     run_id: str,
-    resources: Dict,
-    input_spec: Dict[str, str],
-) -> None:
+    resources: Dict[str, Any],
+    input_spec: Dict[str, Any],  # now includes "overrides"
+) -> Dict[str, Any]:
     """
     End‑to‑end preprocessing worker.
 
@@ -32,12 +32,28 @@ def run_data_processing(
     run_id      : uuid string
     resources   : dict with shared handles (S3 client, etc.)
     input_spec  : dict with input specification (e.g. {"path": "/abs/path/raw.json"})
+
+    Returns a dict of summary statistics at the end, e.g.
+    {
+      "num_chats": 12,
+      "num_blocks": 345,
+      "avg_tokens_per_block": 150.2,
+      ...
+    }
     """
     # Load configuration
     with hydra.initialize(config_path="../conf"):
         cfg = hydra.compose(config_name="config")
 
-    s3_client: boto3.client | None = resources.get("s3_client")
+    # 2) Apply overrides
+    overrides = input_spec.get("overrides", {})
+    for key, value in overrides.items():
+        if hasattr(cfg, key):  # Check if the attribute exists in cfg
+            setattr(cfg, key, value)
+        else:
+            logger.warning(f"Override skipped: '{key}' not found in configuration.")
+
+        s3_client: boto3.client | None = resources.get("s3_client")
 
     # --------------------------------------------------------------------
     # 1) Load raw chats from temp file, then delete the file when done
@@ -531,3 +547,5 @@ def run_data_processing(
             )
         except Exception as e:
             logger.error(f"Failed to upload train.jsonl to S3: {e}")
+
+    return chat_stats

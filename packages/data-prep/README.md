@@ -282,7 +282,7 @@ Choose the method that best suits your needs:
 *   **Uvicorn:** (Provides auto-reload)
     ```bash
     # Using uv
-    uv run uvicorn app:app --host 0.0.0.0 --port 8014 --reload
+    uv run uvicorn app:app --host 0.0.0.0 --port 8018 --reload
 
 *   **FastAPI CLI:** (Requires `fastapi[standard]`)
     ```bash
@@ -319,7 +319,7 @@ curl -X POST -H "Content-Type: application/json" \
 
 curl -X POST -H "Content-Type: application/json" \
      --data @/Users/lowrenhwa/Desktop/resonare/packages/data-prep/data/raw/result.json \
-     http://localhost:8015/data-prep/process
+     http://localhost:8020/data-prep/process
 # Example Response: {"status": "queued", "message": "Job accepted and enqueued", "run_id": "a1b2c3d4-e5f6-7890-abcd-ef0123456789"}
 
 # 2) Check the status of a specific job using the run_id
