@@ -15,9 +15,13 @@ services:
       - ./packages/data-prep/data:/app/data
     develop:
       watch:
+        # only sync source code & main script
         - action: sync
-          path: ./packages/data-prep
-          target: /app
+          path: ./packages/data-prep/src               # host
+          target: /app/src                             # container
+        - action: sync
+          path: ./packages/data-prep/app.py
+          target: /app/app.py
 
   # fine-tuning:
   #   build:
@@ -83,8 +87,14 @@ services:
     develop:
       watch:
         - action: sync
-          path: ./packages/frontend
-          target: /app
+          path: ./packages/frontend/main.py
+          target: /app/main.py
+        - action: sync
+          path: ./packages/frontend/pages
+          target: /app/pages
+        - action: sync
+          path: ./packages/frontend/utils.py
+          target: /app/utils.py
 
 networks:
   default:

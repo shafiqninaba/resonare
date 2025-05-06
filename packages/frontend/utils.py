@@ -70,35 +70,62 @@ def poll_job(url: str, interval: int = 10) -> Dict[str, Any]:
 
 def display_summary(stats: Dict[str, Any]) -> None:
     """
-    Display processed job summary metrics and block distribution chart.
+    Render headline metrics plus a Top‑10 pie chart of block distribution.
 
     Args:
-        stats (Dict[str, Any]): Dictionary of processing statistics.
+        stats: Dictionary produced by the data‑prep backend.
     """
     st.subheader("📊 Summary Statistics")
 
+    # ── headline numbers ─────────────────────────────────────────────
     cols = st.columns(3)
     cols[0].metric("Chats", stats.get("num_chats", 0))
     cols[0].metric("Blocks", stats.get("num_blocks", 0))
-    cols[1].metric("Min tokens", stats.get("min_tokens_per_block", 0))
-    cols[1].metric("Max tokens", stats.get("max_tokens_per_block", 0))
-    cols[2].metric("Avg tokens", round(stats.get("avg_tokens_per_block", 0), 2))
+    cols[1].metric("Min tokens", stats.get("min_tokens_per_block", 0))
+    cols[1].metric("Max tokens", stats.get("max_tokens_per_block", 0))
+    cols[2].metric("Avg tokens", round(stats.get("avg_tokens_per_block", 0), 2))
 
     cols2 = st.columns(3)
     cols2[0].metric(
-        "Min duration (min)", round(stats.get("min_duration_minutes_per_block", 0), 2)
+        "Min dur (min)", round(stats.get("min_duration_minutes_per_block", 0), 2)
     )
     cols2[1].metric(
-        "Max duration (min)", round(stats.get("max_duration_minutes_per_block", 0), 2)
+        "Max dur (min)", round(stats.get("max_duration_minutes_per_block", 0), 2)
     )
     cols2[2].metric(
-        "Avg duration (min)", round(stats.get("avg_duration_minutes_per_block", 0), 2)
+        "Avg dur (min)", round(stats.get("avg_duration_minutes_per_block", 0), 2)
     )
 
+    # ── block breakdown pie ‑‑ top‑10 ‑‑──────────────────────────────
     breakdown = stats.get("block_breakdown", {})
-    if breakdown:
-        df = pd.DataFrame(breakdown.items(), columns=["Chat", "Blocks"])
-        fig, ax = plt.subplots()
-        ax.pie(df["Blocks"], labels=df["Chat"], autopct="%1.1f%%", startangle=90)
-        ax.axis("equal")
-        st.pyplot(fig)
+    if not breakdown:
+        return
+
+    st.markdown("### 🥧 Block Distribution (top‑10 chats)")
+
+    df = (
+        pd.DataFrame(breakdown.items(), columns=["Chat", "Blocks"])
+        .sort_values("Blocks", ascending=False)
+        .reset_index(drop=True)
+    )
+
+    top_df = df.iloc[:10].copy()
+    if len(df) > 10:  # fold remainder
+        other_sum = df["Blocks"].iloc[10:].sum()
+        top_df.loc[len(top_df)] = ["Others", other_sum]
+
+    total_blocks = top_df["Blocks"].sum()
+    top_df["Percent"] = 100 * top_df["Blocks"] / total_blocks
+
+    # ----- plot ------------------------------------------------------
+    fig, ax = plt.subplots(figsize=(6, 6))
+    wedges, texts, autotexts = ax.pie(
+        top_df["Blocks"],
+        labels=top_df["Chat"],
+        autopct="%1.1f%%",
+        startangle=90,
+        pctdistance=0.85,
+    )
+    ax.axis("equal")  # perfect circle
+    plt.setp(autotexts, size=9, weight="bold")
+    st.pyplot(fig)

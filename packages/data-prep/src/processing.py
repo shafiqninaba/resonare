@@ -315,6 +315,7 @@ def run_data_processing(
     #   • Prefix every line with the delimiter (e.g. '>>>')
     #   • Separate lines with '\n'
     #   • Keep the timestamp of the first message in each group
+    #   • Ensure that for each block, the first message is from the user and the last message is from the assistant
     #   • Add a system message at the start of each block if specified
     logger.info("Merging consecutive messages by sender within each block...")
     delimiter = cfg.message_delimiter.strip()
@@ -362,7 +363,48 @@ def run_data_processing(
 
         convo.blocks = merged_blocks
 
-    # Append the system message to each block
+    # ------------------------------------------------------------------
+    # 6b) Ensure each block starts with USER and ends with ASSISTANT
+    # ------------------------------------------------------------------
+    fixed_blocks_total = 0
+    discarded_blocks = 0
+
+    for convo in chats:
+        new_blocks: List[List[Message]] = []
+
+        for block in convo.blocks:
+            if not block:
+                continue
+
+            # Trim leading assistant messages
+            while block and block[0].role == "assistant":
+                block = block[1:]
+
+            # Trim trailing user messages
+            while block and block[-1].role == "user":
+                block = block[:-1]
+
+            # Keep block only if it now starts with user and ends with assistant
+            if (
+                len(block) >= 2
+                and block[0].role == "user"
+                and block[-1].role == "assistant"
+            ):
+                new_blocks.append(block)
+                fixed_blocks_total += 1
+            else:
+                discarded_blocks += 1
+
+        convo.blocks = new_blocks
+
+    logger.info(
+        f"Role‑sanity pass complete: {fixed_blocks_total} blocks kept, "
+        f"{discarded_blocks} blocks discarded for incorrect start/end roles."
+    )
+
+    # ------------------------------------------------------------------
+    # 6c) Add system message to each block if specified
+    # ------------------------------------------------------------------
     if cfg.system_prompt:
         logger.info(
             f"Prepending system message to each conversation block with content: {cfg.system_prompt}"
