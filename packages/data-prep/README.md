@@ -155,7 +155,7 @@ flowchart TD
         A --> B[Parse JSON + Write temp file];
         B --> C[Generate run_id<br/>Store initial job_status];
         C --> D[Enqueue run_id<br/>to background job_queue];
-        D --> R[Return "run_id": "..." to Client];
+        D --> R[Return run_id to Client];
     end
 
     subgraph Async Worker (Background Process)
