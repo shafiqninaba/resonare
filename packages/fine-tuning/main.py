@@ -226,18 +226,27 @@ async def get_queue_status() -> Dict[str, Any]:
 
 
 @app.get("/health")
-async def get_health_status() -> Dict[str, str]:
+async def get_health_status():
     """Health check endpoint that verifies service readiness.
 
     Returns:
-        Dict[str, str]: Simple service and S3 health status.
+        Response with appropriate status code:
+        - 200: Service is healthy
+        - 503: Service is unhealthy
     """
-    s3_status = "connected" if "s3_client" in resources else "disconnected"
-    return {
-        "status": "healthy",
-        "message": "Fine-tuning API is operational",
-        "s3_connection": s3_status,
-    }
+    try:
+        s3_status = "connected" if "s3_client" in resources else "disconnected"
+
+        if s3_status == "disconnected":
+            raise HTTPException(status_code=503, detail="S3 client not connected")
+
+        return {
+            "status": "healthy",
+            "message": "Fine-tuning API is operational",
+            "s3_connection": s3_status,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
 
 if __name__ == "__main__":

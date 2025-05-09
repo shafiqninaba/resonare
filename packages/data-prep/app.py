@@ -24,7 +24,7 @@ import httpx
 import uvicorn
 import yaml
 from dotenv import load_dotenv
-from fastapi import Body, FastAPI, HTTPException, Request
+from fastapi import Body, FastAPI, HTTPException
 from pydantic import BaseModel
 
 from src.processing import run_data_processing
@@ -345,7 +345,7 @@ async def get_health_status() -> Dict[str, str]:
     s3_status = "connected" if "s3_client" in resources else "disconnected"
     return {
         "status": "healthy",
-        "message": "Fine-tuning API is operational",
+        "message": "Data-prep API is operational",
         "s3_connection": s3_status,
     }
 

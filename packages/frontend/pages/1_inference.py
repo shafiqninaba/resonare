@@ -2,6 +2,9 @@ import re  # Import regular expressions module
 
 import requests  # Assuming you'll use requests to call the backend
 import streamlit as st
+import os
+
+from urllib.parse import urljoin
 
 st.title("Chat with Model")
 
@@ -62,7 +65,10 @@ if prompt := st.chat_input("What is up?"):
         is_error = False
         try:
             # Assuming your FastAPI backend is running at http://localhost:8000
-            api_url = "http://localhost:8000/infer"
+            INFERENCE_URL = os.getenv("INFERENCE_URL")
+
+            # join the inference URL with the endpoint
+            api_url = urljoin(INFERENCE_URL, "/infer")
             # Send the entire message history in the payload
             payload = {
                 "run_id": st.session_state.run_id,

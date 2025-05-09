@@ -197,6 +197,28 @@ async def run_inference(request_data: InferenceRequest):
         )
 
 
+@app.get("/health")
+async def get_health_status() -> Dict[str, str]:
+    """Health check endpoint that verifies service readiness.
+
+    Returns:
+        Dict[str, str]: Service health status including GPU availability.
+    """
+    gpu_status = "available" if torch.cuda.is_available() else "unavailable"
+    gpu_info = (
+        f"{torch.cuda.device_count()} device(s)"
+        if torch.cuda.is_available()
+        else "none"
+    )
+
+    return {
+        "status": "healthy",
+        "message": "Inference API is operational",
+        "gpu_status": gpu_status,
+        "gpu_info": gpu_info,
+    }
+
+
 # --- Cleanup on Shutdown (Optional but Recommended) ---
 @app.on_event("shutdown")
 def shutdown_event():

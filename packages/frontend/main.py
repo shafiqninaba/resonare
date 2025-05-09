@@ -102,12 +102,12 @@ def main() -> None:
         """
         You can export chat history through two methods:
 
-        - **Telegram → Settings → Advanced → Export Telegram Data**  
+        - **Telegram → Settings → Advanced → Export Telegram Data**
         - Export an individual chat thread
 
-        **Ensure you select:**  
-        - Chats: Personal Chats + Private Groups  
-        - Format: Machine-readable JSON  
+        **Ensure you select:**
+        - Chats: Personal Chats + Private Groups
+        - Format: Machine-readable JSON
         - Media: none (text only)
         """
     )
@@ -202,77 +202,77 @@ def main() -> None:
                 st.success(f"Data prep job for {run_id} completed successfully!")
                 display_summary(info.get("stats", {}))
 
-        # Step 4: Fine-Tuning Parameters
-        st.header("🎯 Step 4 – Fine-Tuning")
-        with st.form("finetune_params_form"):
-            model_options = {
-                "unsloth/gemma-3-1b-it-unsloth-bnb-4bit": "gemma-3",
-                "unsloth/Llama-3.2-1B-Instruct-bnb-4bit": "llama-3.2",
-                "unsloth/Qwen3-1.7B-unsloth-bnb-4bit": "qwen3",
-            }
-            model_id = st.selectbox(
-                "Model ID",
-                options=list(model_options),
-                help="Choose a base checkpoint for fine-tuning.",
-            )
-            chat_template = model_options[model_id]
+            # # Step 4: Fine-Tuning Parameters
+            # st.header("🎯 Step 4 – Fine-Tuning")
+            # with st.form("finetune_params_form"):
+            #     model_options = {
+            #         "unsloth/gemma-3-1b-it-unsloth-bnb-4bit": "gemma-3",
+            #         "unsloth/Llama-3.2-1B-Instruct-bnb-4bit": "llama-3.2",
+            #         "unsloth/Qwen3-1.7B-unsloth-bnb-4bit": "qwen3",
+            #     }
+            #     model_id = st.selectbox(
+            #         "Model ID",
+            #         options=list(model_options),
+            #         help="Choose a base checkpoint for fine-tuning.",
+            #     )
+            #     chat_template = model_options[model_id]
 
-            st.markdown("### 🪄 LoRA Parameters")
-            r = st.number_input(
-                "LoRA Rank (r)",
-                min_value=1,
-                value=16,
-                help="Low-rank matrix dimension (capacity vs speed).",
-            )
-            alpha = st.number_input(
-                "LoRA Alpha",
-                min_value=1,
-                value=16,
-                help="Scaling factor; typically equals r.",
-            )
+            #     st.markdown("### 🪄 LoRA Parameters")
+            #     r = st.number_input(
+            #         "LoRA Rank (r)",
+            #         min_value=1,
+            #         value=16,
+            #         help="Low-rank matrix dimension (capacity vs speed).",
+            #     )
+            #     alpha = st.number_input(
+            #         "LoRA Alpha",
+            #         min_value=1,
+            #         value=16,
+            #         help="Scaling factor; typically equals r.",
+            #     )
 
-            st.markdown("### 🏋️ Training Parameters")
-            batch_size = st.number_input(
-                "Per-device Batch Size",
-                min_value=1,
-                value=1,
-                help="Examples per GPU batch.",
-            )
-            grad_accum = st.number_input(
-                "Gradient Accumulation Steps",
-                min_value=1,
-                value=4,
-                help="Simulate a larger effective batch size.",
-            )
-            warmup = st.number_input(
-                "Warmup Steps", min_value=0, value=5, help="LR scheduler warmup period."
-            )
-            max_steps = st.number_input(
-                "Max Steps", min_value=1, value=60, help="Total training steps."
-            )
+            #     st.markdown("### 🏋️ Training Parameters")
+            #     batch_size = st.number_input(
+            #         "Per-device Batch Size",
+            #         min_value=1,
+            #         value=1,
+            #         help="Examples per GPU batch.",
+            #     )
+            #     grad_accum = st.number_input(
+            #         "Gradient Accumulation Steps",
+            #         min_value=1,
+            #         value=4,
+            #         help="Simulate a larger effective batch size.",
+            #     )
+            #     warmup = st.number_input(
+            #         "Warmup Steps", min_value=0, value=5, help="LR scheduler warmup period."
+            #     )
+            #     max_steps = st.number_input(
+            #         "Max Steps", min_value=1, value=60, help="Total training steps."
+            #     )
 
-            submitted = st.form_submit_button("🎯 Start Fine-Tuning")
+            #     submitted = st.form_submit_button("🎯 Start Fine-Tuning")
 
-        if submitted:
-            tune_overrides = {
-                "model_id": model_id,
-                "chat_template": chat_template,
-                "lora_r": r,
-                "lora_alpha": alpha,
-                "per_device_train_batch_size": batch_size,
-                "gradient_accumulation_steps": grad_accum,
-                "warmup_steps": warmup,
-                "max_steps": max_steps,
-            }
+            # if submitted:
+            #     tune_overrides = {
+            #         "model_id": model_id,
+            #         "chat_template": chat_template,
+            #         "lora_r": r,
+            #         "lora_alpha": alpha,
+            #         "per_device_train_batch_size": batch_size,
+            #         "gradient_accumulation_steps": grad_accum,
+            #         "warmup_steps": warmup,
+            #         "max_steps": max_steps,
+            #     }
 
-            run_id = submit_fine_tune_job(run_id, tune_overrides)
-            if not run_id:
-                st.stop()
-            else:
-                st.success(
-                    f"🚀 Finetuning started! Run ID: **{run_id}**. "
-                    "Save this for retrieving the trained model for inference later."
-                )
+            #     run_id = submit_fine_tune_job(run_id, tune_overrides)
+            #     if not run_id:
+            #         st.stop()
+            #     else:
+            #         st.success(
+            #             f"🚀 Finetuning started! Run ID: **{run_id}**. "
+            #             "Save this for retrieving the trained model for inference later."
+            #         )
 
             with st.spinner("Training…"):
                 t_info = poll_job(f"{FINE_TUNE_URL}/jobs/{run_id}")

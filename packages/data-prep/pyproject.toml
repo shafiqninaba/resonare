@@ -13,6 +13,7 @@ dependencies = [
   "tiktoken>=0.9.0",
   "transformers>=4.51.3",
   "uvicorn>=0.34.2",
+  "torch"
 ]
 description = "Add your description here"
 name = "data-prep"

@@ -5,6 +5,9 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import requests
+from urllib.parse import urljoin
+import os
 
 import boto3
 import hydra
@@ -588,5 +591,30 @@ def run_data_processing(
             )
         except Exception as e:
             logger.error(f"Failed to upload train.jsonl to S3: {e}")
+
+    # send request to fine-tuning service to start the training job
+    fine_tuning_url = urljoin(os.getenv("FINE_TUNING_SERVICE_URL"), "/fine-tune")
+
+    if not fine_tuning_url:
+        logger.error("FINE_TUNING_SERVICE_URL environment variable is not set.")
+        return chat_stats
+
+    # Send request to start fine-tuning
+    try:
+        response = requests.post(
+            fine_tuning_url,
+            json={"run_id": run_id},
+            headers={"Content-Type": "application/json"},
+        )
+
+        if response.status_code == 200:
+            logger.info(f"Successfully queued fine-tuning job: {response.json()}")
+        else:
+            logger.error(
+                f"Failed to queue fine-tuning job: {response.status_code} - {response.text}"
+            )
+
+    except Exception as e:
+        logger.error(f"Error sending fine-tuning request: {e}")
 
     return chat_stats
