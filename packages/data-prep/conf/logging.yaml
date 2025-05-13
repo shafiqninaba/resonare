@@ -1,52 +1,51 @@
----
 version: 1
-disable_existing_loggers: False
+disable_existing_loggers: false
 formatters:
   json:
-    format: "%(asctime)s %(module)s %(message)s"  #"%(asctime)s %(process)d %(name)s %(levelname)s %(message)s"
+    format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'  #"%(asctime)s %(process)d %(name)s %(levelname)s %(message)s"
     class: pythonjsonlogger.jsonlogger.JsonFormatter
-    datefmt: "%d-%m-%Y %H:%M" #datefmt: "%Y-%m-%dT%H:%M:%S%z"
+    datefmt: '%Y-%m-%d %H:%M:%S' #datefmt: "%Y-%m-%dT%H:%M:%S%z"
 
   rich_formatter:
-    format: "%(message)s"
+    format: '%(message)s'
 
 handlers:
   console:
     class: rich.logging.RichHandler
     level: INFO
     formatter: rich_formatter
-    rich_tracebacks: True
-    markup: True
+    rich_tracebacks: true
+    markup: true
 
   debug_file_handler:
-      class: logging.handlers.RotatingFileHandler
-      level: DEBUG
-      formatter: json
-      filename: debug.log
-      maxBytes: 10485760 # 10MB
-      backupCount: 20
-      encoding: utf8
-      delay: True
+    class: logging.handlers.RotatingFileHandler
+    level: DEBUG
+    formatter: json
+    filename: logs/debug.log
+    maxBytes: 10485760   # 10MB
+    backupCount: 20
+    encoding: utf8
+    delay: true
 
   info_file_handler:
-      class: logging.handlers.RotatingFileHandler
-      level: INFO
-      formatter: json
-      filename: info.log
-      maxBytes: 10485760 # 10MB
-      backupCount: 20
-      encoding: utf8
-      delay: True
+    class: logging.handlers.RotatingFileHandler
+    level: INFO
+    formatter: json
+    filename: logs/info.log
+    maxBytes: 10485760   # 10MB
+    backupCount: 20
+    encoding: utf8
+    delay: true
 
   error_file_handler:
-      class: logging.handlers.RotatingFileHandler
-      level: ERROR
-      formatter: json
-      filename: error.log
-      maxBytes: 10485760 # 10MB
-      backupCount: 20
-      encoding: utf8
-      delay: True
+    class: logging.handlers.RotatingFileHandler
+    level: ERROR
+    formatter: json
+    filename: logs/error.log
+    maxBytes: 10485760   # 10MB
+    backupCount: 20
+    encoding: utf8
+    delay: true
 
 root:
   level: INFO
