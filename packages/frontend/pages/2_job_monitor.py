@@ -8,7 +8,7 @@ queues, even when the backend returns zero jobs.
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 import pandas as pd
 import requests
@@ -16,7 +16,7 @@ import streamlit as st
 
 
 DATA_PREP_URL = os.getenv("DATA_PREP_URL", "http://data-prep:8000")
-FINE_TUNE_URL = os.getenv("FINE_TUNING_URL", "http://fine-tuning:8000")
+FINE_TUNE_URL = os.getenv("FINE_TUNING_SERVICE_URL", "http://fine-tuning:8000")
 
 
 def _safe_json(url: str, timeout: int = 15) -> Dict[str, Any]:

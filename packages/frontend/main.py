@@ -16,7 +16,7 @@ from src.utils import (
 )
 
 DATA_PREP_URL: str = os.getenv("DATA_PREP_URL", "http://data-prep:8000")
-FINE_TUNE_URL: str = os.getenv("FINE_TUNING_URL", "http://fine-tuning:8000")
+FINE_TUNE_URL: str = os.getenv("FINE_TUNING_SERVICE_URL", "http://fine-tuning:8000")
 
 DEFAULT_PROMPT: str = "You are Ren Hwa, a kind, sensitive and somewhat bubbly guy."
 DEFAULT_NAME: str = "Ren Hwa"
