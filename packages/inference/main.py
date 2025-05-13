@@ -79,7 +79,7 @@ async def load_or_get_model(run_id: str):
         # Create a temporary directory *only for downloading*
         with tempfile.TemporaryDirectory() as temp_dir:
             logger.info(f"Created temporary directory for download: {temp_dir}")
-            dir_name = f"{run_id}/models/lora_model"
+            dir_name = f"{run_id}/lora_model"
 
             try:
                 # Check if the directory exists in S3

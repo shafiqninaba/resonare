@@ -1,15 +1,17 @@
+from unsloth import FastLanguageModel
+import torch
+from unsloth.chat_templates import get_chat_template
+from datasets import load_dataset
+from trl import SFTTrainer
+from transformers import TrainingArguments, DataCollatorForSeq2Seq
+from unsloth import is_bfloat16_supported
+from unsloth.chat_templates import standardize_sharegpt
+import hydra
+from src.general_utils import setup_logger, upload_directory_to_s3
 import os
 import tempfile
-from typing import Dict
-import hydra
-import torch
-from datasets import load_dataset
 from dotenv import load_dotenv
-from src.general_utils import setup_logger, upload_directory_to_s3
-from transformers import DataCollatorForSeq2Seq, TrainingArguments
-from trl import SFTTrainer
-from unsloth import FastLanguageModel, is_bfloat16_supported
-from unsloth.chat_templates import get_chat_template, standardize_sharegpt
+from typing import Dict
 
 load_dotenv()
 
@@ -19,25 +21,75 @@ logger = setup_logger("fine_tuning")
 def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
     """Background task to run the fine-tuning process"""
     try:
+        # Load configuration
+        with hydra.initialize(config_path="../conf"):
+            cfg = hydra.compose(config_name="config")
+
+        logger.info(f"Starting fine-tuning for run_id: {run_id}")
+
+        # Get configurations from hydra config
+        model_config = cfg.model
+        lora_config = cfg.lora
+        dataset_config = cfg.dataset
+        training_config = cfg.training
+        output_config = cfg.output
+
+        # Initialising the model and tokenizer
+        model, tokenizer = FastLanguageModel.from_pretrained(
+            model_name=model_config.name,
+            max_seq_length=model_config.max_seq_length,
+            dtype=model_config.dtype,
+            load_in_4bit=model_config.load_in_4bit,
+        )
+        logger.info(f"Model: {model_config.name} loaded successfully")
+
+        logger.info("Adding LoRA adapters to the model")
+        # Add LoRA adapters to the model
+        model = FastLanguageModel.get_peft_model(
+            model,
+            r=lora_config.r,
+            target_modules=lora_config.target_modules,
+            lora_alpha=lora_config.alpha,
+            lora_dropout=lora_config.dropout,
+            bias=lora_config.bias,
+            use_gradient_checkpointing=lora_config.use_gradient_checkpointing,
+            random_state=lora_config.random_state,
+            use_rslora=lora_config.use_rslora,
+            loftq_config=lora_config.loftq_config,
+        )
+
+        logger.info("LoRA adapters added successfully")
+
+        ### DATA PREP ###
+        logger.info("Starting data preparation")
+        tokenizer = get_chat_template(
+            tokenizer,
+            chat_template=model_config.chat_template,
+        )
+
+        def formatting_prompts_func(examples):
+            convos = examples["messages"]
+            texts = [
+                tokenizer.apply_chat_template(
+                    convo, tokenize=False, add_generation_prompt=False
+                )
+                for convo in convos
+            ]
+            return {
+                "text": texts,
+            }
+
+        logger.info(f"Loading and processing dataset from S3 for run_id: {run_id}")
+
+        ### DOWNLOAD DATASET FROM S3 - USING SHARED CLIENT ###
+        s3 = resources["s3_client"]
+        AWS_S3_BUCKET = resources["s3_bucket"]
+
+        # Define the object key (path in S3)
+        object_key = f"{run_id}/data/train.jsonl"
+
         # Create a temporary directory
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Load configuration
-            with hydra.initialize(config_path="../conf"):
-                cfg = hydra.compose(config_name="config")
-
-            # Get configurations from hydra config
-            model_config = cfg.model
-            lora_config = cfg.lora
-            dataset_config = cfg.dataset
-            training_config = cfg.training
-            output_config = cfg.output
-
-            ### DOWNLOAD DATASET FROM S3 - USING SHARED CLIENT ###
-            s3 = resources["s3_client"]
-            AWS_S3_BUCKET = resources["s3_bucket"]
-
-            # Define the object key (path in S3)
-            object_key = f"{run_id}/data/train.jsonl"
             # Extract filename from object_key and create path in temp dir
             filename = os.path.basename(object_key)
             local_file_path = os.path.join(temp_dir, filename)
@@ -56,55 +108,6 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 logger.error(f"Error downloading file: {e}")
                 raise
 
-            logger.info(f"Starting fine-tuning for run_id: {run_id}")
-
-            # Initialising the model and tokenizer
-            model, tokenizer = FastLanguageModel.from_pretrained(
-                model_name=model_config.name,
-                max_seq_length=model_config.max_seq_length,
-                dtype=model_config.dtype,
-                load_in_4bit=model_config.load_in_4bit,
-            )
-            logger.info(f"Model: {model_config.name} loaded successfully")
-
-            logger.info("Adding LoRA adapters to the model")
-            # Add LoRA adapters to the model
-            model = FastLanguageModel.get_peft_model(
-                model,
-                r=lora_config.r,
-                target_modules=lora_config.target_modules,
-                lora_alpha=lora_config.alpha,
-                lora_dropout=lora_config.dropout,
-                bias=lora_config.bias,
-                use_gradient_checkpointing=lora_config.use_gradient_checkpointing,
-                random_state=lora_config.random_state,
-                use_rslora=lora_config.use_rslora,
-                loftq_config=lora_config.loftq_config,
-            )
-
-            logger.info("LoRA adapters added successfully")
-
-            ### DATA PREP ###
-            logger.info("Starting data preparation")
-            tokenizer = get_chat_template(
-                tokenizer,
-                chat_template=model_config.chat_template,
-            )
-
-            def formatting_prompts_func(examples):
-                convos = examples["messages"]
-                texts = [
-                    tokenizer.apply_chat_template(
-                        convo, tokenize=False, add_generation_prompt=False
-                    )
-                    for convo in convos
-                ]
-                return {
-                    "text": texts,
-                }
-
-            logger.info(f"Loading and processing dataset from S3 for run_id: {run_id}")
-
             dataset = standardize_sharegpt(dataset)
             dataset = dataset.map(
                 formatting_prompts_func,
@@ -120,7 +123,7 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 dataset_text_field="text",
                 max_seq_length=model_config.max_seq_length,
                 data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer),
-                dataset_num_proc=dataset_config.num_proc,
+                dataset_num_proc=1,
                 packing=training_config.packing,
                 args=TrainingArguments(
                     per_device_train_batch_size=training_config.per_device_train_batch_size,
@@ -165,7 +168,7 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 f"{trainer_stats.metrics['train_runtime']} seconds used for training."
             )
             logger.info(
-                f"{round(trainer_stats.metrics['train_runtime'] / 60, 2)} minutes used for training."
+                f"{round(trainer_stats.metrics['train_runtime']/60, 2)} minutes used for training."
             )
             logger.debug(f"Peak reserved memory = {used_memory} GB.")
             logger.debug(
