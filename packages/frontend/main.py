@@ -24,7 +24,13 @@ DEFAULT_NAME: str = "Ren Hwa"
 
 def submit_data_prep_job(
     chats: List[Dict[str, Any]],
-    overrides: Dict[str, Any],
+    target_name: str,
+    system_prompt: str,
+    date_limit: Optional[str],
+    convo_secs: int,
+    min_tokens: int,
+    max_tokens: int,
+    delimiter: str,
     base_url: str = DATA_PREP_URL,
 ) -> Optional[str]:
     """
@@ -32,20 +38,33 @@ def submit_data_prep_job(
 
     Args:
         chats: Parsed chat dictionaries.
-        overrides: User-defined parameters for preprocessing.
+        target_name: Name of the target user.
+        system_prompt: System prompt for the model.
+        date_limit: Date limit for messages.
+        convo_secs: Time threshold for conversation blocks.
+        min_tokens: Minimum tokens per block.
+        max_tokens: Maximum tokens per block.
+        delimiter: Delimiter for message lines.
         base_url: Base URL of the data-prep service.
 
     Returns:
         The run_id on success, or None on failure.
     """
+    payload = {
+        "chats": chats,
+        "target_name": target_name,
+        "system_prompt": system_prompt,
+        "date_limit": date_limit,
+        "convo_block_thereshold_secs": convo_secs,
+        "min_tokens_per_block": min_tokens,
+        "max_tokens_per_block": max_tokens,
+        "message_delimiter": delimiter,
+    }
+
     try:
-        response = requests.post(
-            f"{base_url}/process",
-            json={"chats": chats, "overrides": overrides},
-            timeout=60,
-        )
-        response.raise_for_status()
-        return response.json().get("run_id")
+        resp = requests.post(f"{base_url}/process", json=payload, timeout=60)
+        resp.raise_for_status()
+        return resp.json().get("run_id")
     except requests.RequestException as exc:
         st.error(f"Data-prep submission failed: {exc}")
         return None
@@ -174,21 +193,20 @@ def main() -> None:
             st.error("Please upload at least one JSON file first.")
             st.stop()
 
-        prep_overrides = {
-            "target_name": target_name,
-            "system_prompt": system_prompt,
-            "date_limit": date_limit,
-            "convo_block_thereshold_secs": convo_secs,
-            "min_tokens_per_block": min_tokens,
-            "max_tokens_per_block": max_tokens,
-            "message_delimiter": delimiter,
-        }
-
-        run_id = submit_data_prep_job(chats, prep_overrides)
+        run_id = submit_data_prep_job(
+            chats,
+            target_name,
+            system_prompt,
+            date_limit,
+            convo_secs,
+            min_tokens,
+            max_tokens,
+            delimiter,
+        )
         if not run_id:
             st.stop()
         else:
-            st.success(f"🚀 Pre-processing started! Run ID: **{run_id}**. ")
+            st.success(f"🚀 Data processing started! Run ID: **{run_id}**. ")
 
         with st.spinner("Processing…"):
             info = poll_job(f"{DATA_PREP_URL}/jobs/{run_id}")

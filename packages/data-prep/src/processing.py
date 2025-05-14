@@ -2,18 +2,19 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-import requests
 from urllib.parse import urljoin
-import os
 
 import boto3
 import hydra
+import requests
+from pydantic import ValidationError
 
-from src.models import Chat, Message
-from src.utils.processing import (
+from src.models import Block, Chat, Message
+from src.utils.data_prep import (
     calculate_chat_stats,
     load_tokenizer,
     parse_date_limit,
@@ -48,7 +49,7 @@ def run_data_processing(
     with hydra.initialize(config_path="../conf"):
         cfg = hydra.compose(config_name="config")
 
-    # 2) Apply overrides
+    # Apply overrides
     overrides = input_spec.get("overrides", {})
     for key, value in overrides.items():
         if hasattr(cfg, key):  # Check if the attribute exists in cfg
@@ -211,19 +212,25 @@ def run_data_processing(
                     f"[{contact_name}] skipping a message due to parse error: {e}"
                 )
 
-        # If we found any valid messages, add the Conversation object.
+        # If we found any valid messages, construct and append the Conversation object.
         if msgs:
             msgs.sort(
                 key=lambda m: m.timestamp
             )  # Sort messages by timestamp to ensure chronological order.
 
-            chats.append(
-                Chat(
+            try:
+                # Create a new Chat object with the parsed messages
+                chat = Chat(
                     contact_name=contact_name,
                     type=chat_type,
                     messages=msgs,
                 )
-            )
+                chats.append(chat)
+            except ValidationError as e:
+                logger.warning(
+                    f"Failed to create chat object for '{contact_name}': {e}"
+                )
+                continue
 
     logger.info(f"Built {len(chats)} usable chat objects.")
 
@@ -253,7 +260,6 @@ def run_data_processing(
 
     logger.info("Chunking chats into blocks...")
     for chat in chats:
-        chat.blocks = []
         current_block: List[Message] = []
         current_tokens = 0
         previous_time: Optional[datetime] = None
@@ -278,7 +284,7 @@ def run_data_processing(
                 # Commit the existing block
                 if current_block:
                     if min_tokens <= current_tokens <= max_tokens:
-                        chat.blocks.append(current_block)
+                        chat.raw_blocks.append(current_block)
                     elif current_tokens < min_tokens:
                         num_short_blocks += 1
                     else:
@@ -293,7 +299,7 @@ def run_data_processing(
         # Commit any remaining block
         if current_block:
             if min_tokens <= current_tokens <= max_tokens:
-                chat.blocks.append(current_block)
+                chat.raw_blocks.append(current_block)
             elif current_tokens < min_tokens:
                 num_short_blocks += 1
             else:
@@ -301,14 +307,14 @@ def run_data_processing(
 
     # Discard empty chats with empty blocks
     num_original_chats = len(chats)
-    chats = [c for c in chats if c.blocks]
+    chats = [c for c in chats if c.raw_blocks]
     num_discarded_chats = num_original_chats - len(chats)
 
     # Log the results
-    num_total_blocks = sum(len(c.blocks) for c in chats)
+    num_total_blocks = sum(len(c.raw_blocks) for c in chats)
     logger.info(
         f"Chunking complete: {num_original_chats} conversations → {len(chats)} conversations ({num_discarded_chats} discarded due to empty blocks), "
-        f"{num_total_blocks} chat blocks created; {num_short_blocks} too short, {num_long_blocks} too long."
+        f"{num_total_blocks} chat blocks created; discarded short {num_short_blocks} blocks and {num_long_blocks} long blocks."
     )
 
     # -------------------------------
@@ -324,11 +330,11 @@ def run_data_processing(
     logger.info("Merging consecutive messages by sender within each block...")
     delimiter = cfg.message_delimiter.strip()
 
-    for convo in chats:
+    for chat in chats:
         merged_blocks: List[List[Message]] = []
 
-        for block in convo.blocks:
-            merged_messages: List[Message] = []
+        for block in chat.raw_blocks:
+            current_block: List[Message] = []
 
             first_msg = block[0]
             current_sender = first_msg.role
@@ -341,74 +347,54 @@ def run_data_processing(
                 ):  # concatenate messages from the same sender
                     current_content += f"\n{delimiter} {msg.content.strip()}"
                 else:
-                    # Create and add the merged message to the list
-                    merged_messages.append(
-                        Message(
-                            role=current_sender,
-                            content=current_content,
-                            timestamp=current_timestamp,
+                    try:
+                        # Create and add the merged message to the list
+                        current_block.append(
+                            Message(
+                                role=current_sender,
+                                content=current_content,
+                                timestamp=current_timestamp,
+                            )
                         )
-                    )
+                    except ValidationError as e:
+                        logger.warning(
+                            f"Failed to create merged message for chat '{chat.contact_name}', "
+                            f"block starting at {block[0].timestamp if block else 'unknown'}: {e}"
+                        )
+                        continue
+
                     current_sender = msg.role
                     current_timestamp = msg.timestamp
                     current_content = f"{delimiter} {msg.content.strip()}"
 
             # Add last merged message if exists
             if current_content:
-                merged_messages.append(
-                    Message(
-                        role=current_sender,
-                        content=current_content,
-                        timestamp=current_timestamp,
+                try:
+                    # Create and add the merged message to the list
+                    current_block.append(
+                        Message(
+                            role=current_sender,
+                            content=current_content,
+                            timestamp=current_timestamp,
+                        )
                     )
-                )
+                except ValidationError as e:
+                    logger.warning(
+                        f"Failed to create merged message for chat '{chat.contact_name}', "
+                        f"block starting at {block[0].timestamp if block else 'unknown'}: {e}"
+                    )
+                    continue
 
-            merged_blocks.append(merged_messages)
+            merged_blocks.append(current_block)
 
-        convo.blocks = merged_blocks
-
-    # ------------------------------------------------------------------
-    # 6b) Ensure each block starts with USER and ends with ASSISTANT
-    # ------------------------------------------------------------------
-    fixed_blocks_total = 0
-    discarded_blocks = 0
-
-    for convo in chats:
-        new_blocks: List[List[Message]] = []
-
-        for block in convo.blocks:
-            if not block:
-                continue
-
-            # Trim leading assistant messages
-            while block and block[0].role == "assistant":
-                block = block[1:]
-
-            # Trim trailing user messages
-            while block and block[-1].role == "user":
-                block = block[:-1]
-
-            # Keep block only if it now starts with user and ends with assistant
-            if (
-                len(block) >= 2
-                and block[0].role == "user"
-                and block[-1].role == "assistant"
-            ):
-                new_blocks.append(block)
-                fixed_blocks_total += 1
-            else:
-                discarded_blocks += 1
-
-        convo.blocks = new_blocks
-
-    logger.info(
-        f"Role‑sanity pass complete: {fixed_blocks_total} blocks kept, "
-        f"{discarded_blocks} blocks discarded for incorrect start/end roles."
-    )
+        chat.raw_blocks = merged_blocks
 
     # ------------------------------------------------------------------
-    # 6c) Add system message to each block if specified
+    # 6b) Ensure each block starts with SYSTEM (if specified), USER and ends with ASSISTANT
     # ------------------------------------------------------------------
+    discarded_short_blocks = 0
+    discarded_long_blocks = 0
+
     if cfg.system_prompt:
         logger.info(
             f"Prepending system message to each conversation block with content: {cfg.system_prompt}"
@@ -426,19 +412,60 @@ def run_data_processing(
             )
             system_message = None
 
-        # 2) If creation succeeded, prepend to every block
-        if system_message:
-            for convo in chats:
-                for block in convo.blocks:
-                    try:
-                        block.insert(0, system_message)
-                    except Exception as e:
-                        # log and move on to the next block
-                        logger.warning(
-                            f"Could not prepend system message for chat '{convo.contact_name}', "
-                            f"block starting at {block[0].timestamp if block else 'unknown'}: {e}"
-                        )
-                        continue
+    for chat in chats:
+        valid_blocks: List[Block] = []
+
+        for block in chat.raw_blocks:
+            if not block:
+                continue
+
+            # Trim leading assistant messages
+            while block and block[0].role == "assistant":
+                block.pop(0)
+
+            # Trim trailing user messages
+            while block and block[-1].role == "user":
+                block.pop()
+
+            # Add a system message if specified
+            if system_message:
+                block.insert(0, system_message)
+
+            # structural length check
+            min_msgs = 3 if system_message else 2
+            if len(block) < min_msgs:
+                discarded_short_blocks += 1
+                continue
+
+            # token‐count check
+            token_count = sum(len(tokenizer.encode(m.content)) for m in block)
+            if token_count < min_tokens:
+                discarded_short_blocks += 1
+                continue
+            elif token_count > max_tokens:
+                discarded_long_blocks += 1
+                continue
+            discarded_blocks = discarded_short_blocks + discarded_long_blocks
+
+            try:
+                # Create a new Block object with the trimmed messages
+                block = Block(messages=block)
+                valid_blocks.append(block)
+
+            except ValidationError as e:
+                logger.warning(
+                    f"Failed to create block for chat '{chat.contact_name}', "
+                    f"block starting at {block.messages[0].timestamp if block else 'unknown'}: {e}"
+                )
+                discarded_blocks += 1
+                continue
+
+        chat.valid_blocks = valid_blocks
+
+    logger.info(
+        f"Role‑sanity pass complete: {sum(len(chat.valid_blocks) for chat in chats)} valid blocks kept, "
+        f"total of {discarded_blocks} blocks discarded, {discarded_short_blocks} short blocks and {discarded_long_blocks} long blocks."
+    )
 
     # -------------------------------
     # 7) Log summary statistics
@@ -516,7 +543,7 @@ def run_data_processing(
         chat_record = {
             "contact_name": chat.contact_name,
             "chat_type": chat.type,
-            "num_blocks": len(chat.blocks),
+            "num_blocks": len(chat.valid_blocks),
             "blocks": [
                 {
                     "messages": [
@@ -527,10 +554,10 @@ def run_data_processing(
                             "role": msg.role,
                             "content": msg.content,
                         }
-                        for msg in block
+                        for msg in block.messages
                     ]
                 }
-                for block in chat.blocks
+                for block in chat.valid_blocks
             ],
         }
         chat_records.append(chat_record)
@@ -561,10 +588,10 @@ def run_data_processing(
     logger.info("Preparing training blocks...")
     training_block_lines = []
     for chat in chats:
-        for block in chat.blocks:
+        for block in chat.valid_blocks:
             record = {
                 "messages": [
-                    {"role": msg.role, "content": msg.content} for msg in block
+                    {"role": msg.role, "content": msg.content} for msg in block.messages
                 ]
             }
             training_block_lines.append(
@@ -592,7 +619,9 @@ def run_data_processing(
         except Exception as e:
             logger.error(f"Failed to upload train.jsonl to S3: {e}")
 
-    # send request to fine-tuning service to start the training job
+    # -------------------------------
+    # 9) Send request to fine-tuning service to start the training job
+    # -------------------------------
     fine_tuning_url = urljoin(os.getenv("FINE_TUNING_SERVICE_URL"), "/fine-tune")
 
     if not fine_tuning_url:

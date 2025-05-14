@@ -12,6 +12,9 @@ import sys
 from pathlib import Path
 
 import yaml
+from rich.console import Console
+from rich.table import Table
+from rich.text import Text
 
 logger = logging.getLogger(__name__)
 
@@ -141,3 +144,20 @@ def setup_loguru_logging(logs_dir="logs"):
         fallback_logger.warning(
             "Failed to fully configure Loguru logging. Fallback basic logging is now active."
         )
+
+
+def capture_table_output(table: Table, width: int = 150) -> Text:
+    """
+    Capture the ASCII representation of a Rich Table and return it as Text
+    for logging purposes.
+
+    Args:
+        table: The Rich Table object to capture.
+        width: The width of the console for formatting.
+    Returns:
+        A Text object containing the captured table output.
+    """
+    console = Console(width=width)
+    with console.capture() as capture:
+        console.print(table)
+    return Text.from_ansi(capture.get())

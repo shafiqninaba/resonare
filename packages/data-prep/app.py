@@ -18,14 +18,14 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import httpx
 import uvicorn
 import yaml
 from dotenv import load_dotenv
 from fastapi import Body, FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.processing import run_data_processing
 from src.utils.general import setup_standard_logging
@@ -80,7 +80,32 @@ class JobInfo(BaseModel):
     stats: Optional[Dict[str, Any]] = None
 
 
-class APIResponse(BaseModel):
+class DataPrepRequest(BaseModel):
+    # required payload
+    chats: List[Dict[str, Any]] = Field(
+        ..., description="List of chat dictionaries for preprocessing"
+    )
+
+    # all the overrides as separate fields, with your defaults
+    target_name: Optional[str] = Field(
+        None, description="Name under which to store processed chat"
+    )
+    system_prompt: Optional[str] = Field(
+        None, description="System message to prepend to every block"
+    )
+    date_limit: Optional[str] = Field(
+        None, description="ISO date string; ignore messages after this date"
+    )
+    convo_block_thereshold_secs: int = Field(
+        3600,
+        description="Max gap in seconds before starting a new block",
+    )
+    min_tokens_per_block: int = Field(300, description="Minimum tokens per block")
+    max_tokens_per_block: int = Field(800, description="Maximum tokens per block")
+    message_delimiter: str = Field(">>>", description="Prefix for merged lines")
+
+
+class DataPrepRequestResponse(BaseModel):
     """Standard response returned after submitting a preprocessing job.
 
     Attributes:
@@ -241,10 +266,8 @@ app = FastAPI(
 )
 
 
-@app.post("/process", response_model=APIResponse)
-async def submit_job(
-    payload: Dict[str, Any] = Body(...),
-) -> APIResponse:
+@app.post("/process", response_model=DataPrepRequestResponse)
+async def submit_job(req: DataPrepRequest = Body(...)) -> DataPrepRequestResponse:
     run_id = uuid.uuid4().hex
 
     if "s3_client" not in resources:
@@ -256,17 +279,16 @@ async def submit_job(
             detail=f"Job with run_id {run_id} already exists with status {job_status[run_id].status}",
         )
 
-    chats = payload.get("chats")  # the actual merged chat data
-    overrides = payload.get(
-        "overrides", {}
-    )  # any additional parameters for data processing
-
+    chats = req.chats  # the actual merged chat data
     if not isinstance(chats, (list, dict)):
         raise HTTPException(status_code=400, detail="chats must be a list or object")
 
+    # any additional parameters for data processing
+    overrides = req.model_dump(exclude={"chats"}, exclude_none=True)
+
+    # Create a temporary directory to store the raw chat data and write to a json file
     temp_dir = Path(tempfile.gettempdir()) / "chat_data_prep"
     temp_dir.mkdir(parents=True, exist_ok=True)
-
     raw_path = temp_dir / f"{run_id}.json"
     raw_path.write_text(json.dumps(chats), encoding="utf-8")
 
@@ -284,7 +306,7 @@ async def submit_job(
 
     await job_queue.put(run_id)
 
-    return APIResponse(
+    return DataPrepRequestResponse(
         status="queued",
         message="Job accepted and enqueued",
         run_id=run_id,

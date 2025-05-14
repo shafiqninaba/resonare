@@ -16,9 +16,6 @@ from datetime import datetime
 from typing import Dict, List, Optional, Union
 
 import tiktoken
-from rich.console import Console
-from rich.table import Table
-from rich.text import Text
 from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast
 
 from ..models import Chat
@@ -142,14 +139,16 @@ def calculate_chat_stats(
         return stats  # Return early if there are no chats
 
     stats["num_chats"] = len(chats)
-    stats["num_blocks"] = sum(len(chat.blocks) for chat in chats)
-    stats["block_breakdown"] = {chat.contact_name: len(chat.blocks) for chat in chats}
-    all_blocks = [block for chat in chats for block in chat.blocks]
+    stats["num_blocks"] = sum(len(chat.valid_blocks) for chat in chats)
+    stats["block_breakdown"] = {
+        chat.contact_name: len(chat.valid_blocks) for chat in chats
+    }
+    all_blocks = [block for chat in chats for block in chat.valid_blocks]
 
     # --- Calculate Token Stats ---
     tokens_per_block_list = [
         sum(
-            len(tokenizer.encode(msg.content)) for msg in block
+            len(tokenizer.encode(msg.content)) for msg in block.messages
         )  # Use tokenizer.encode directly
         for block in all_blocks
     ]
@@ -158,32 +157,20 @@ def calculate_chat_stats(
     stats["avg_tokens_per_block"] = statistics.mean(tokens_per_block_list)
 
     # --- Calculate Duration Stats ---
-
     durations_minutes_list = [
-        (block[-1].timestamp - block[1].timestamp).total_seconds()
-        / 60.0  # first block is system message with no timestamp
+        (
+            block.messages[-1].timestamp
+            - (
+                block.messages[1].timestamp
+                if block.messages[0].role == "system"
+                else block.messages[0].timestamp
+            )
+        ).total_seconds()
+        / 60.0
         for block in all_blocks
-        # block is guaranteed not empty here due to the filter when creating all_blocks
     ]
     stats["min_duration_minutes_per_block"] = min(durations_minutes_list)
     stats["max_duration_minutes_per_block"] = max(durations_minutes_list)
     stats["avg_duration_minutes_per_block"] = statistics.mean(durations_minutes_list)
 
     return stats
-
-
-def capture_table_output(table: Table, width: int = 150) -> Text:
-    """
-    Capture the ASCII representation of a Rich Table and return it as Text
-    for logging purposes.
-
-    Args:
-        table: The Rich Table object to capture.
-        width: The width of the console for formatting.
-    Returns:
-        A Text object containing the captured table output.
-    """
-    console = Console(width=width)
-    with console.capture() as capture:
-        console.print(table)
-    return Text.from_ansi(capture.get())
