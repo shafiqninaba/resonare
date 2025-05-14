@@ -1,0 +1,38 @@
+logging:
+  version: 1
+  disable_existing_loggers: false
+
+  formatters:
+    simple:
+      format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+      datefmt: '%Y-%m-%d %H:%M:%S'
+    rich:
+      format: '%(message)s'
+
+  handlers:
+    console:
+      class: rich.logging.RichHandler
+      level: INFO
+      formatter: rich
+
+    file:
+      class: logging.handlers.RotatingFileHandler
+      level: DEBUG
+      formatter: simple
+      filename: ./logs/logs.log
+      maxBytes: 10485760  # 10 MB
+
+  root:
+    level: INFO
+    handlers: [console, file]
+
+  loggers:
+    fine_tuning:
+      level: DEBUG
+      handlers: [console, file]
+      propagate: no
+
+    fine_tuning_api:
+      level: DEBUG
+      handlers: [console, file]
+      propagate: no
