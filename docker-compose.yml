@@ -3,7 +3,6 @@ services:
     build:
       context: ./packages/data-prep
       dockerfile: Dockerfile
-    # image: resonare-data-prep:latest
     command: [uv, run, app.py]
     env_file:
       - .env
@@ -35,7 +34,6 @@ services:
     build:
       context: ./packages/fine-tuning
       dockerfile: Dockerfile
-    # image: resonare-fine-tuning:latest
     deploy:
       resources:
         limits:
@@ -74,7 +72,6 @@ services:
     build:
       context: ./packages/inference
       dockerfile: Dockerfile
-    # image: resonare-inference:latest
     deploy:
       resources:
         limits:
@@ -112,7 +109,6 @@ services:
     build:
       context: ./packages/frontend
       dockerfile: Dockerfile
-    # image: resonare-frontend:latest
     command: [uv, run, streamlit, run, main.py]
     ports:
       - 8501:8501
