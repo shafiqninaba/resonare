@@ -1,16 +1,17 @@
+from unsloth import FastLanguageModel
+import torch
+from unsloth.chat_templates import get_chat_template
+from datasets import load_dataset
+from trl import SFTTrainer
+from transformers import TrainingArguments, DataCollatorForSeq2Seq
+from unsloth import is_bfloat16_supported
+from unsloth.chat_templates import standardize_sharegpt
+import hydra
+from src.general_utils import setup_logger, upload_directory_to_s3
 import os
 import tempfile
-from typing import Dict
-
-import hydra
-import torch
-from datasets import load_dataset
 from dotenv import load_dotenv
-from src.general_utils import setup_logger, upload_directory_to_s3
-from transformers import DataCollatorForSeq2Seq, TrainingArguments
-from trl import SFTTrainer
-from unsloth import FastLanguageModel, is_bfloat16_supported
-from unsloth.chat_templates import get_chat_template, standardize_sharegpt
+from typing import Dict
 
 load_dotenv()
 
@@ -122,7 +123,7 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 dataset_text_field="text",
                 max_seq_length=model_config.max_seq_length,
                 data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer),
-                dataset_num_proc=dataset_config.num_proc,
+                dataset_num_proc=1,
                 packing=training_config.packing,
                 args=TrainingArguments(
                     per_device_train_batch_size=training_config.per_device_train_batch_size,
@@ -167,7 +168,7 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 f"{trainer_stats.metrics['train_runtime']} seconds used for training."
             )
             logger.info(
-                f"{round(trainer_stats.metrics['train_runtime'] / 60, 2)} minutes used for training."
+                f"{round(trainer_stats.metrics['train_runtime']/60, 2)} minutes used for training."
             )
             logger.debug(f"Peak reserved memory = {used_memory} GB.")
             logger.debug(

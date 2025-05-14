@@ -173,17 +173,17 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-data/**
-!data/**/
-!data/**/.gitkeep
+**/data/**
+!**/data/**/
+!**/data/**/.gitkeep
 
 # Virtual environments
 .venv
 
 
-logs/**
-!logs/**/
-!logs/**/.gitkeep
+**/logs/**
+!**/logs/**/
+!**/logs/**/.gitkeep
 
 .vscode/
 

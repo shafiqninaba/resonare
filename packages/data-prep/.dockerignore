@@ -6,8 +6,12 @@ conf/local/**
 conf/**/*credentials*
 
 # Ignore everything in the following folders
-data
-logs
+data/**
+!data/**/
+!data/**/.gitkeep
+logs/**
+!logs/**/
+!logs/**/.gitkeep
 models
 
 # Ignore .deb packages

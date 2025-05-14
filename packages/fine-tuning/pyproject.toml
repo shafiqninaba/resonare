@@ -14,10 +14,9 @@ dependencies = [
   "torch",
   "torchvision",
   "transformers>=4.51.3",
-  "trl>=0.15.2",
-  "unsloth>=2025.3.19",
-  "triton==3.2.0; sys_platform == 'linux'",
+  "unsloth",
   "xformers",
+  "triton==3.2.0; sys_platform == 'linux'",
   "python-dotenv>=1.1.0",
   "huggingface_hub[hf_xet]",
   "boto3>=1.37.35"
