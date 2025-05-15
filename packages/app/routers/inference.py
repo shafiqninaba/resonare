@@ -43,7 +43,7 @@ async def run_inference(request_data: InferenceRequest):
             min_p=0.1,
             pad_token_id=tokenizer.eos_token_id,
             # You might need to adjust max_new_tokens if context gets long
-            max_new_tokens=512,  # Example: Limit generated tokens
+            max_new_tokens=64,  # Example: Limit generated tokens
         )
 
         input_length = inputs.shape[1]
