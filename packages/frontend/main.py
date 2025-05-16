@@ -294,16 +294,16 @@ def main() -> None:
             #             "Save this for retrieving the trained model for inference later."
             #         )
 
-            with st.spinner("Training…"):
-                t_info = poll_job(f"{FINE_TUNE_URL}/jobs/{run_id}")
+        with st.spinner("Training…"):
+            t_info = poll_job(f"{FINE_TUNE_URL}/jobs/{run_id}")
 
-                if t_info.get("status") != "completed":
-                    st.error(
-                        f"Fine-tuning job for {run_id} failed, error: {t_info.get('error')}"
-                    )
-                    st.stop()
-                else:
-                    st.success(f"Finetuning job for {run_id} completed successfully!")
+            if t_info.get("status") != "completed":
+                st.error(
+                    f"Fine-tuning job for {run_id} failed, error: {t_info.get('error')}"
+                )
+                st.stop()
+            else:
+                st.success(f"Finetuning job for {run_id} completed successfully!")
 
     st.caption("Resonare © 2025")
 
