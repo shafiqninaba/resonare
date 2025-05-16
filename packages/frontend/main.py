@@ -120,27 +120,30 @@ def main() -> None:
     # --- Step 1: Export Instructions ---
     st.header("📥 Step 1: Export Your Chat Data")
     st.markdown(
-    """**Option A: Export All Chats**
-    1. Telegram Desktop → Settings → Advanced → Export Telegram Data
-    2. Select the following options:
-        - **Chats**: Personal chats (Support for groups coming soon)
-        - **Export format**: JSON
-        - **Export media**: None
+        """
+    **Option A: Export All Chats**
+    1. Telegram Desktop → Settings → Advanced → Export Telegram Data  
+    2. Select the following options:  
+    - **Chats**: Personal chats (Support for groups coming soon)  
+    - **Export format**: JSON  
+    - **Export media**: None  
     3. Click Export
 
     **Option B: Export Single Chat**
-    1. Open individual chat in Telegram Desktop
-    2. Click on the three dots in the top right corner
-    3. Select **Export chat history**
-    4. Same settings as above
+    1. Open individual chat in Telegram Desktop  
+    2. Click on the three dots in the top right corner  
+    3. Select **Export chat history**  
+    4. Same settings as above  
     5. Repeat per chat
 
-    After exporting, typically you will find the files in:
-    - **Windows**: `C:\\Users\\<username>\\Downloads\\Telegram Desktop\\`
-    - **macOS**: `~/Downloads/Telegram Desktop/`
+    After exporting, you’ll typically find the files in:  
+    - **Windows**: `C:\\Users\\<username>\\Downloads\\Telegram Desktop\\`  
+    - **macOS**: `~/Downloads/Telegram Desktop/`  
 
-    Drag and drop the JSON files into the box below. """
+    Drag and drop the JSON files into the box below.
+    """
 )
+
 
     # --- Step 2: Upload ---
     st.header("📤 Step 2: Upload JSON Files")
@@ -246,7 +249,7 @@ def main() -> None:
     # --- Current Job Status ---
     if st.session_state.run_ids:
         current = st.session_state.run_ids[-1]
-        st.header("📡 Current Job Status")
+        st.header("Current Job Status")
         # Poll data-prep until done
         with st.spinner(f"Processing data-prep for {current}…"):
             while True:
@@ -273,6 +276,9 @@ def main() -> None:
             st.success("Fine-tuning completed!")
         else:
             st.error(f"Fine-tuning failed: {ft.get('error')}")
+
+    else:
+        st.info("No jobs submitted yet.")
 
     st.caption("Resonare © 2025 — Built by Shafiq and Ren Hwa")
 
