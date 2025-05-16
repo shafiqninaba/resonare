@@ -11,7 +11,7 @@
 <h2 align="center">Resonare</h2>
 
   <p align="center">
-    An application that uses an Agentic RAG pipeline to retrieve information from the vector store using Qdrant that contains crawled websites via Firecrawl.
+    End-to-end LLM Twin pipeline to make a clone of yourself based on your Telegram chat data.
     <br />
     <a href="https://github.com/shafiqninaba/resonare/issues/new?labels=bug&template=bug-report---.md">Report Bug</a>
     &middot;
@@ -51,9 +51,9 @@
 
 * [![Python][Python-img]][Python-url]
 * [![uv][uv-img]][uv-url]
-* [![unsloth][unsloth-img]][unsloth-url]
+* <a href="https://github.com/unslothai/unsloth"><img src="https://raw.githubusercontent.com/unslothai/unsloth/main/images/made with unsloth.png" height="30" align="center" style="margin-bottom: 5px" /></a>
 * [![Streamlit][streamlit-img]][streamlit-url]
-* [![AWS][aws-img]][aws-url]
+* <a href="https://aws.amazon.com/"><img src="https://upload.wikimedia.org/wikipedia/commons/9/93/Amazon_Web_Services_Logo.svg" height="40" align="center" style="margin-bottom: 5px" /></a>
 
 <!-- ABOUT THE PROJECT -->
 ## About The Project
@@ -161,9 +161,6 @@ Zack Low | lowrenhwa88@gmail.com | [LinkedIn](https://www.linkedin.com/in/ren-hw
 [Python-url]: https://www.python.org/
 [uv-img]: https://img.shields.io/badge/uv-package%20manager-blueviolet
 [uv-url]: https://docs.astral.sh/uv/
-[unsloth-img]: https://raw.githubusercontent.com/unslothai/unsloth/main/images/made%20with%20unsloth.png
-[unsloth-url]: https://github.com/unslothai/unsloth
 [streamlit-img]: https://img.shields.io/badge/-Streamlit-FF4B4B?style=flat&logo=streamlit&logoColor=white
 [streamlit-url]: https://streamlit.io/
-[aws-img]: https://www.google.com/url?sa=i&url=https%3A%2F%2Ficonduck.com%2Ficons%2F94029%2Faws&psig=AOvVaw1GvNS6KfUIPaOdVNrfzhJA&ust=1747453015928000&source=images&cd=vfe&opi=89978449&ved=0CBQQjRxqFwoTCKjY-_SHp40DFQAAAAAdAAAAABAK
-[aws-url]: https://aws.amazon.com/
+
