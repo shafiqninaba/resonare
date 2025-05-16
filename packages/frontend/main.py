@@ -196,8 +196,8 @@ def main() -> None:
             )
         with col2:
             model_map = {
-                "unsloth/gemma-3-1b-it-unsloth-bnb-4bit": "gemma-3",
-                "unsloth/Llama-3.2-1B-Instruct-bnb-4bit": "llama-3.2",
+                "unsloth/gemma-3-4b-it-unsloth-bnb-4bit": "gemma-3",
+                "unsloth/Llama-3.2-3B-Instruct-bnb-4bit": "llama-3.1",
                 "unsloth/Qwen3-1.7B-unsloth-bnb-4bit": "qwen3",
             }
             model_id = st.selectbox(
