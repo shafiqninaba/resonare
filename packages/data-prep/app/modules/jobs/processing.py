@@ -392,6 +392,7 @@ def run_data_processing(
     # ------------------------------------------------------------------
     discarded_short_blocks = 0
     discarded_long_blocks = 0
+    system_message = None
 
     if cfg.system_prompt:
         logger.info(
@@ -408,7 +409,7 @@ def run_data_processing(
             logger.error(
                 f"Failed to create system message, skipping system prompts: {e}"
             )
-            system_message = None
+            
 
     for chat in chats:
         valid_blocks: List[Block] = []
@@ -523,7 +524,7 @@ def run_data_processing(
         "uuid": run_id,
         "model_id": cfg.model_id,
         "target_name": cfg.target_name,
-        "system_prompt": cfg.system_prompt,
+        "system_prompt": str(cfg.system_prompt) if cfg.system_prompt else "None",
         "date_limit": str(cfg.date_limit) if cfg.date_limit else "None",
         "convo_block_thereshold_secs": str(cfg.convo_block_thereshold_secs),
         "min_tokens_per_block": str(cfg.min_tokens_per_block),
