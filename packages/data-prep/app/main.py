@@ -21,7 +21,7 @@ logger.info("Setting up logging configuration.")
 setup_standard_logging(
     logging_config_path=os.path.join(
         project_root,
-        "conf",
+        "../conf",
         "logging.yaml",
     ),
 )

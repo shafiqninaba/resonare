@@ -1,10 +1,3 @@
-"""
-Resonare – Job Dashboard
-
-Streamlit page that shows all data-prep and fine-tuning jobs plus their
-queues, even when the backend returns zero jobs.
-"""
-
 from __future__ import annotations
 
 import os
@@ -35,162 +28,124 @@ def _safe_json(url: str, timeout: int = 15) -> Dict[str, Any]:
         resp.raise_for_status()
         return resp.json() or {}
     except Exception as exc:
-        st.warning(f"⚠️ Could not reach `{url.split('/')[-1]}`: {exc}")
+        st.warning(f"⚠️ Could not reach '{url}': {exc}")
         return {}
 
 
 def main() -> None:
-    """Entry point for the Resonare Job Dashboard."""
+    """
+    Resonare Job Dashboard page.
+
+    Shows only the current user's data-prep and fine-tune runs,
+    pulled from session_state['run_ids'].
+    """
     st.set_page_config(page_title="Resonare – Job Dashboard", layout="wide")
     st.title("Resonare – Job Monitor")
-    st.markdown("Track all preprocessing and fine-tuning jobs in real time.")
+    st.markdown("Track your own preprocessing and fine-tuning jobs.")
 
-    # Fetch job statuses and queues
-    dp_jobs = _safe_json(f"{DATA_PREP_URL}/jobs", timeout=20)
-    ft_jobs = _safe_json(f"{FINE_TUNE_URL}/jobs", timeout=20)
-    dp_queue = _safe_json(f"{DATA_PREP_URL}/jobs/queue")
-    ft_queue = _safe_json(f"{FINE_TUNE_URL}/queue")
+    # Retrieve user's run IDs
+    run_ids: List[str] = st.session_state.get("run_ids", [])
+    if not run_ids:
+        st.info("You have no jobs yet. Start a run on the home page.")
+        return
 
-    # ── Build combined DataFrame for filtering ────────────────────────────
+    # Fetch all jobs from backend
+    raw_dp = _safe_json(f"{DATA_PREP_URL}/jobs")
+    raw_ft = _safe_json(f"{FINE_TUNE_URL}/jobs")
+    raw_dp_queue = _safe_json(f"{DATA_PREP_URL}/jobs/queue")
+    raw_ft_queue = _safe_json(f"{FINE_TUNE_URL}/queue")
+
+    # Filter to user's runs
+    dp_jobs = {rid: info for rid, info in raw_dp.items() if rid in run_ids}
+    ft_jobs = {rid: info for rid, info in raw_ft.items() if rid in run_ids}
+
+    # Build DataFrame for summary table
     rows: List[Dict[str, Any]] = []
+    for rid in run_ids:
+        # Data-prep row
+        dp = dp_jobs.get(rid, {})
+        rows.append({
+            "run_id": rid,
+            "step": "data-prep",
+            "status": dp.get("status", "-"),
+            "created_at": dp.get("created_at", "-"),
+            "error": dp.get("error", ""),
+            "stats": dp.get("stats", {}),
+        })
+        # Fine-tune row
+        ft = ft_jobs.get(rid, {})
+        rows.append({
+            "run_id": rid,
+            "step": "fine-tuning",
+            "status": ft.get("status", "-"),
+            "created_at": ft.get("created_at", "-"),
+            "error": ft.get("error", ""),
+            "stats": {},
+        })
 
-    for rid, info in dp_jobs.items():
-        rows.append(
-            {
-                "run_id": rid,
-                "type": "data-prep",
-                "status": info.get("status", "unknown"),
-                "created_at": info.get("created_at", ""),
-                "started_at": info.get("started_at", ""),
-                "completed_at": info.get("completed_at", ""),
-                "error": info.get("error", ""),
-                "stats": info.get("stats", {}),
-            }
-        )
-    for rid, info in ft_jobs.items():
-        rows.append(
-            {
-                "run_id": rid,
-                "type": "fine-tuning",
-                "status": info.get("status", "unknown"),
-                "created_at": info.get("created_at", ""),
-                "started_at": info.get("started_at", ""),
-                "completed_at": info.get("completed_at", ""),
-                "error": info.get("error", ""),
-            }
-        )
+    df = pd.DataFrame(rows)
 
-    df = pd.DataFrame(
-        rows,
-        columns=[
-            "run_id",
-            "type",
-            "status",
-            "created_at",
-            "started_at",
-            "completed_at",
-            "error",
-            "stats",
-        ],
-    )
+    # Display summary table
+    st.markdown("### 🔍 Your Job Summary")
+    st.dataframe(df.sort_values(["run_id", "step"]), use_container_width=True)
 
-    # Filters
-    st.markdown("### 🔍 Filter Jobs")
-    col1, col2, col3 = st.columns(3)
+    # Detailed view
+    st.markdown("### Detailed Job Info")
+    for rid in run_ids:
+        with st.expander(f"Run {rid}"):
+            dp = dp_jobs.get(rid)
+            if dp:
+                st.subheader("Data-Prep")
+                st.json(dp)
+            else:
+                st.info("No data-prep info available.")
+
+            ft = ft_jobs.get(rid)
+            if ft:
+                st.subheader("Fine-Tuning")
+                st.json(ft)
+            else:
+                st.info("No fine-tuning info available.")
+
+        # Active queue overview
+    st.markdown("### Active Queue Positions")
+
+    dp_queue_json = raw_dp_queue.get("jobs", {})
+    dp_queue_size = raw_dp_queue.get("queue_size", 0)
+    ft_queue_json = raw_ft_queue.get("jobs", {})
+    ft_queue_size = raw_ft_queue.get("queue_size", 0)
+
+    col1, col2 = st.columns(2)
     with col1:
-        status_filter = st.multiselect(
-            "Status",
-            ["queued", "running", "completed", "failed"],
-            key="status_filter",
-        )
-    with col2:
-        type_filter = st.multiselect(
-            "Job Type",
-            ["data-prep", "fine-tuning"],
-            key="type_filter",
-        )
-    with col3:
-        run_id_query = st.text_input("Search Run ID", key="runid_search")
-
-    if status_filter:
-        df = df[df["status"].isin(status_filter)]
-    if type_filter:
-        df = df[df["type"].isin(type_filter)]
-    if run_id_query:
-        df = df[df["run_id"].str.contains(run_id_query, case=False, na=False)]
-
-    # Job Table
-    if df.empty:
-        st.info("No matching jobs.")
-    else:
-        st.dataframe(
-            df.sort_values("created_at", ascending=False),
-            use_container_width=True,
-        )
-
-    # Job Panes
-    st.markdown("## All Jobs")
-
-    # Data-Prep Jobs
-    if st.checkbox("Data-Prep Jobs", value=True):
-        if not dp_jobs:
-            st.info("No data-prep jobs yet.")
-        for rid, info in sorted(
-            dp_jobs.items(),
-            key=lambda kv: kv[1].get("created_at", ""),
-            reverse=True,
-        ):
-            label = f"[data-prep] {rid} — {info.get('status', '-')}"
-            with st.expander(label):
-                st.json(info)
-
-    # Fine-Tuning Jobs
-    if st.checkbox("Fine-Tuning Jobs", value=True):
-        if not ft_jobs:
-            st.info("No fine-tuning jobs yet.")
-        for rid, info in sorted(
-            ft_jobs.items(),
-            key=lambda kv: kv[1].get("created_at", ""),
-            reverse=True,
-        ):
-            label = f"[fine-tuning] {rid} — {info.get('status', '-')}"
-            with st.expander(label):
-                st.json(info)
-
-    # Queues
-    st.markdown("## Active Queues")
-    q1, q2 = st.columns(2)
-
-    # Data-Prep Queue
-    with q1:
         st.subheader("Data-Prep Queue")
-        jobs = [
+        queued = [
             job
-            for job in dp_queue.get("jobs", {}).values()
+            for job in dp_queue_json.values()
             if job.get("status") in {"queued", "running"}
         ]
-        jobs.sort(key=lambda j: j.get("position_in_queue", 0))
-        st.write(f"**Queue size:** {dp_queue.get('queue_size', 0)}")
-        if not jobs:
+        queued.sort(key=lambda j: j.get("position_in_queue", 0))
+        st.write(f"**Queue size:** {dp_queue_size}")
+        if not queued:
             st.info("No data-prep jobs running or queued.")
-        for job in jobs:
-            st.json(job)
+        else:
+            for job in queued:
+                st.json(job)
 
-    # Fine-Tuning Queue
-    with q2:
+    with col2:
         st.subheader("Fine-Tuning Queue")
-        jobs = [
+        queued_ft = [
             job
-            for job in ft_queue.get("jobs", {}).values()
+            for job in ft_queue_json.values()
             if job.get("status") in {"queued", "running"}
         ]
-        jobs.sort(key=lambda j: j.get("position_in_queue", 0))
-        st.write(f"**Queue size:** {ft_queue.get('queue_size', 0)}")
-        if not jobs:
+        queued_ft.sort(key=lambda j: j.get("position_in_queue", 0))
+        st.write(f"**Queue size:** {ft_queue_size}")
+        if not queued_ft:
             st.info("No fine-tuning jobs running or queued.")
-        for job in jobs:
-            st.json(job)
-
+        else:
+            for job in queued_ft:
+                st.json(job)
 
 if __name__ == "__main__":
+    main() == "__main__":
     main()

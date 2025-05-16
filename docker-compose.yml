@@ -21,7 +21,7 @@ services:
     environment:
       - UV_COMPILE_BYTECODE=1
       - UV_LINK_MODE=copy
-      - FINE_TUNING_SERVICE_URL=http://app:8000
+      - FINE_TUNING_SERVICE_URL=http://unsloth-backend:8000
     volumes:
       - ./packages/data-prep/conf:/app/conf
       - ./packages/data-prep/data:/app/data
@@ -33,7 +33,7 @@ services:
           path: ./packages/data-prep/app
           target: /app/app
 
-  app:
+  unsloth-backend:
     build:
       context: ./packages/unsloth-backend
       dockerfile: Dockerfile
@@ -80,8 +80,8 @@ services:
     environment:
       - STREAMLIT_SERVER_PORT=8501
       - DATA_PREP_URL=http://data-prep:8000
-      - FINE_TUNING_SERVICE_URL=http://app:8000
-      - INFERENCE_URL=http://app:8000
+      - FINE_TUNING_SERVICE_URL=http://unsloth-backend:8000
+      - INFERENCE_URL=http://unsloth-backend:8000
     volumes:
       - ./packages/frontend/conf:/app/conf
       - ./packages/frontend/assets:/app/assets
@@ -89,7 +89,7 @@ services:
       data-prep:
         condition: service_healthy
         restart: true
-      app:
+      unsloth-backend:
         condition: service_healthy
         restart: true
     develop:
