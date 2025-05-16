@@ -3,11 +3,17 @@ services:
     build:
       context: ./packages/data-prep
       dockerfile: Dockerfile
-    command: [uv, run, app.py]
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
     env_file:
       - .env
     healthcheck:
-      test: [CMD-SHELL, curl -f http://localhost:8000/health || exit 1]
+      test: [CMD-SHELL, curl -f http://localhost:8000/system/health || exit 1]
       interval: 60s
       timeout: 5s
       retries: 5
@@ -24,15 +30,12 @@ services:
       watch:
         # only sync source code & main script
         - action: sync
-          path: ./packages/data-prep/src
-          target: /app/src
-        - action: sync
-          path: ./packages/data-prep/app.py
-          target: /app/app.py
+          path: ./packages/data-prep/app
+          target: /app/app
 
   app:
     build:
-      context: ./packages/app
+      context: ./packages/unsloth-backend
       dockerfile: Dockerfile
     deploy:
       resources:
@@ -47,8 +50,8 @@ services:
       - UV_COMPILE_BYTECODE=1
       - UV_LINK_MODE=copy
     volumes:
-      - ./packages/app/conf:/app/conf
-      - ./packages/app/logs:/app/logs
+      - ./packages/unsloth-backend/conf:/app/conf
+      - ./packages/unsloth-backend/logs:/app/logs
     healthcheck:
       test: [CMD-SHELL, curl -f http://localhost:8000/health || exit 1]
       interval: 60s
@@ -59,10 +62,10 @@ services:
       watch:
         # only sync source code & main script
         - action: sync
-          path: ./packages/app/src
+          path: ./packages/unsloth-backend/src
           target: /app/src
         - action: sync
-          path: ./packages/app/main.py
+          path: ./packages/unsloth-backend/main.py
           target: /app/main.py
 
   frontend:
