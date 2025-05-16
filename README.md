@@ -136,7 +136,7 @@ docker-compose down
 ## Contact
 
 <a href="https://github.com/shafiqninaba/resonare/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=shafiqninaba/ask-the-docs" alt="contrib.rocks image" />
+  <img src="https://contrib.rocks/image?repo=shafiqninaba/resonare" alt="contrib.rocks image" />
 </a>
 
 Shafiq Ninaba | shafiqninaba@gmail.com | [LinkedIn](https://linkedin.com/in/shafiq-ninaba)
@@ -147,13 +147,13 @@ Zack Low | lowrenhwa88@gmail.com | [LinkedIn](https://www.linkedin.com/in/ren-hw
 
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-[contributors-shield]: https://img.shields.io/github/contributors/shafiqninaba/ask-the-docs.svg?style=for-the-badge
+[contributors-shield]: https://img.shields.io/github/contributors/shafiqninaba/resonare.svg?style=for-the-badge
 [contributors-url]: https://github.com/shafiqninaba/resonare/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/shafiqninaba/ask-the-docs.svg?style=for-the-badge
+[forks-shield]: https://img.shields.io/github/forks/shafiqninaba/resonare.svg?style=for-the-badge
 [forks-url]: https://github.com/shafiqninaba/resonare/network/members
-[stars-shield]: https://img.shields.io/github/stars/shafiqninaba/ask-the-docs.svg?style=for-the-badge
+[stars-shield]: https://img.shields.io/github/stars/shafiqninaba/resonare.svg?style=for-the-badge
 [stars-url]: https://github.com/shafiqninaba/resonare/stargazers
-[issues-shield]: https://img.shields.io/github/issues/shafiqninaba/ask-the-docs.svg?style=for-the-badge
+[issues-shield]: https://img.shields.io/github/issues/shafiqninaba/resonare.svg?style=for-the-badge
 [issues-url]: https://github.com/shafiqninaba/resonare/issues
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
 [product-screenshot]: assets/images/homepage.jpg
