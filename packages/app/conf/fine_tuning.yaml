@@ -1,5 +1,27 @@
+dataset:
+  split: train
+  num_proc: 2
+
+lora:
+  r: 16
+  alpha: 16
+  dropout: 0
+  bias: none
+  use_gradient_checkpointing: unsloth
+  random_state: 3407
+  use_rslora: false
+  loftq_config:
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+
 model:
-  name: unsloth/Llama-3.2-1B-Instruct
+  name: unsloth/Meta-Llama-3.1-8B
   max_seq_length: 2048
   dtype:
   load_in_4bit: true

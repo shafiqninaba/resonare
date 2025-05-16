@@ -19,7 +19,7 @@ logging:
       class: logging.handlers.RotatingFileHandler
       level: DEBUG
       formatter: simple
-      filename: logs/logs.log
+      filename: ./logs/logs.log
       maxBytes: 10485760  # 10 MB
 
   root:

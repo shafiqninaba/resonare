@@ -1,3 +1,4 @@
 defaults:
   - logging
   - fine_tuning
+  - inference

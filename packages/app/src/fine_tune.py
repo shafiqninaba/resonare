@@ -5,6 +5,7 @@ from datasets import load_dataset
 from trl import SFTTrainer
 from transformers import TrainingArguments, DataCollatorForSeq2Seq
 from unsloth import is_bfloat16_supported
+from unsloth.chat_templates import train_on_responses_only
 from unsloth.chat_templates import standardize_sharegpt
 import hydra
 from src.general_utils import setup_logger, upload_directory_to_s3
@@ -129,7 +130,8 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                     per_device_train_batch_size=training_config.per_device_train_batch_size,
                     gradient_accumulation_steps=training_config.gradient_accumulation_steps,
                     warmup_steps=training_config.warmup_steps,
-                    max_steps=training_config.max_steps,
+                    num_train_epochs = 1, # Set this for 1 full training run.
+                    # max_steps=training_config.max_steps,
                     learning_rate=training_config.learning_rate,
                     fp16=not is_bfloat16_supported(),
                     bf16=is_bfloat16_supported(),
@@ -143,6 +145,11 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 ),
             )
 
+            trainer = train_on_responses_only(
+                trainer,
+                instruction_part = "<|start_header_id|>user<|end_header_id|>\n\n",
+                response_part = "<|start_header_id|>assistant<|end_header_id|>\n\n",
+            )
             logger.info("Starting training...")
 
             # Show current memory stats

@@ -44,13 +44,13 @@ ENV UV_LINK_MODE=copy
 RUN uv venv --python 3.12
 
 # Install dependencies using cache mounts
-RUN --mount=type=cache,target=/root/.cache/uv \
+RUN --mount=type=cache,target=/opt/dlami/nvme/uv-cache \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --no-install-project
 
 # Add project source code and install it
 ADD . /app
-RUN --mount=type=cache,target=/root/.cache/uv \
+RUN --mount=type=cache,target=/opt/dlami/nvme/uv-cache \
     uv sync --frozen --no-dev
 
 # Place executables in the environment at the front of the path
