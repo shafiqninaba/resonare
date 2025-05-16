@@ -48,7 +48,7 @@ def main() -> None:
     # Fetch job statuses and queues
     dp_jobs = _safe_json(f"{DATA_PREP_URL}/jobs", timeout=20)
     ft_jobs = _safe_json(f"{FINE_TUNE_URL}/jobs", timeout=20)
-    dp_queue = _safe_json(f"{DATA_PREP_URL}/queue")
+    dp_queue = _safe_json(f"{DATA_PREP_URL}/jobs/queue")
     ft_queue = _safe_json(f"{FINE_TUNE_URL}/queue")
 
     # ── Build combined DataFrame for filtering ────────────────────────────

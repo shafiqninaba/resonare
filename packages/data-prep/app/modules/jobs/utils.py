@@ -18,7 +18,7 @@ from typing import Dict, List, Optional, Union
 import tiktoken
 from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast
 
-from ..models import Chat
+from .models import Chat
 
 # Define type alias for tokenizer union
 AnyTokenizer = Union[PreTrainedTokenizer, PreTrainedTokenizerFast, tiktoken.Encoding]

@@ -1,190 +1,97 @@
-#!/usr/bin/env python3
-"""
-Processes a JSON chat export (e.g., from Telegram) into filtered conversation
-sessions, chunked by time and token limits, suitable for further analysis or
-LLM fine-tuning.
-
-This script performs the following steps:
-0. Sets up logging configuration using either standard logging configuration file or Loguru (more pythonic).
-
-1. Loads a model specific tokenizer using HuggingFace Transformers (fallback to TikToken).
-
-2. Setup S3 client for uploading processed data if needed.
-
-3. Loads the raw JSON export from a single file or a directory of files.
-    - If a file is specified, it processes that single JSON file, which should contain a list of chats.
-    - If a directory is specified, it processes all JSON files within it, which should each contain a single chat.
-
-4. From the loaded raw data, start building `Chat` objects containing `Message` objects
-   filtering for textual content and applying the date limit if specified.
-
-5. Chunks messages within each chat into conversation 'blocks' based on time gaps
-   (`convo_block_thereshold_secs`) and token counts (`min_tokens_per_block`,
-   `max_tokens_per_block`). Discards blocks outside the token range. Discards conversations with no blocks.
-
-6. A: Merges consecutive messages from the same sender within each block,
-   prefixing each original message line with a delimiter (`message_delimiter`).
-
-   B: Trims leading assistant messages and trailing user messages, ensuring
-   that each block starts with a user message and ends with an assistant message.
-   Optionally prepends a system message to each block if specified in config.
-   Then, filters out blocks that are too short or too long.
-
-7. Calculates and logs summary statistics about the processed chats and blocks.
-
-8. Exports the processed data into two JSON / JSONL files:
-   - One file containing full chat metadata and all associated blocks.
-   - One file containing only the processed blocks, one block per line,
-     suitable for ML training pipelines.
-"""
+from __future__ import annotations
 
 import json
 import logging
 import os
-import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
+from urllib.parse import urljoin
 
 import boto3
 import hydra
-from omegaconf import DictConfig
+import requests
 from pydantic import ValidationError
 
-from src.models import Block, Chat, Message
-from src.utils.data_prep import (
+from app.core.s3_client import get_s3_client
+
+from .models import Block, Chat, Message
+from .utils import (
     calculate_chat_stats,
     load_tokenizer,
     parse_date_limit,
 )
-from src.utils.general import setup_standard_logging
+
+logger = logging.getLogger(__name__)
 
 
-@hydra.main(config_path="conf", config_name="config")
-def main(cfg: DictConfig) -> None:
-    # ---------------------
-    # 0) Set up logging configuration
-    # ---------------------
-    # Get absolute path to the directory of main.py
-    # We assume config folder containing logging conf is always in the same directory as main.py
-    # Avoid issues when running main.py from different directories
-    project_root = Path(__file__).parent
+def run_data_processing(
+    run_id: str, raw_json_path: str, overrides: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    End‑to‑end preprocessing worker.
 
-    logger = logging.getLogger(__name__)
-    logger.info("Setting up logging configuration.")
+    Parameters
+    ----------
+    run_id      : uuid string
+    raw_json_path: temp path to the raw JSON file containing chat data
+    overrides    : dict with overrides for the configuration
+    Returns a dict of summary statistics at the end, e.g.
+    {
+      "num_chats": 12,
+      "num_blocks": 345,
+      "avg_tokens_per_block": 150.2,
+      ...
+    }
+    """
+    # Load configuration
+    with hydra.initialize(config_path="../../../conf"):
+        cfg = hydra.compose(config_name="config")
 
-    setup_standard_logging(
-        logging_config_path=os.path.join(
-            project_root,
-            "conf",
-            "logging.yaml",
-        ),
-    )
+    # Apply overrides
+    for key, value in overrides.items():
+        if hasattr(cfg, key):  # Check if the attribute exists in cfg
+            setattr(cfg, key, value)
+        else:
+            logger.warning(f"Override skipped: '{key}' not found in configuration.")
 
-    # setup_loguru_logging(logs_dir=os.path.join(project_root, "logs"))
+    s3_client: boto3.client | None = get_s3_client()
 
-    # ---------------------
-    # 1) Tokenizer loading
-    # ---------------------
-    # We need a tokenizer to split chat messages into tokens and obtain token counts, for chunking and filtering:
-    #  - Prefer the same tokenizer family (e.g. BPE, SentencePiece, WordPiece) as our target finetuning model for accuracy.
-    #  - Use HuggingFace’s AutoTokenizer to load the specific tokenizer for the target model.
-    #  - If that fails, fall back to OpenAI’s tiktoken (BPE) for speed and API‑compatibility.
-    logger.info(f"Loading tokenizer for model {cfg.model_id} for token counting...")
-    tokenizer = load_tokenizer(model_name=cfg.model_id)
+    # --------------------------------------------------------------------
+    # 1) Load raw chats from temp file, then delete the file when done
+    # --------------------------------------------------------------------
+    path = Path(raw_json_path)
+    raw_chats: List[Dict] = []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
 
-    # ---------------------
-    # 2) Setup S3 client for uploading processed data if needed
-    # ---------------------
-    s3 = None
-    if "s3" in cfg.output.modes:
-        logger.info("Setting up S3 client for uploading processed data...")
+        if isinstance(data, list):
+            raw_chats = [c for c in data if {"name", "messages"} <= c.keys()]
 
-        try:
-            # # Read AWS credentials from environment variables
-            # Note: boto3 looks for AWS credentials in serveal locations. https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html
+        elif isinstance(data, dict) and "chats" in data and "list" in data["chats"]:
+            raw_chats = data["chats"]["list"]
 
-            # AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID")
-            # AWS_SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+        elif isinstance(data, dict) and {"name", "messages"} <= data.keys():
+            raw_chats = [data]
 
-            # if not AWS_ACCESS_KEY or not AWS_SECRET_KEY:
-            #     raise EnvironmentError(
-            #         "Missing AWS credentials in environment variables."
-            #     )
+        else:
+            raise ValueError("Unrecognised JSON structure")
 
-            # Create S3 client
-            s3 = boto3.client(
-                "s3",
-                # aws_access_key_id=AWS_ACCESS_KEY,
-                # aws_secret_access_key=AWS_SECRET_KEY,
-                region_name=cfg.output.s3_region,
-            )
-            logger.info("S3 client setup successful.")
+        if not raw_chats:
+            raise ValueError("List contained no valid chat objects")
 
-        except Exception as e:
-            logger.error(
-                f"Failed to set up S3 client: {e}, s3 upload will be skipped, only local export will be used."
-            )
-            cfg.output.modes = ["local"]
+    except Exception as e:
+        logger.error(f"Failed to load raw chats from {path}: {e}")
+        raise
 
-    # --------------------------------------------
-    # 3.1) Load and upload raw data from JSON data
-    # --------------------------------------------
-    # We load the raw JSON export from a single file or a directory of files.
-    # if a file is specified, it processes that single JSON file, which should contain a list of individual chats.
-    # result.json: {chats: {list: {adam: {messages: []}, "zack": {messages: []}}}}
-    # if a directory is specified, it processes all JSON files within it, which should each contain a single chat.
-    # result.json: {name: "adam", type: "personal_chat", messages: [{from: "adam", text_entities: [], sticker_emoji: ""}]
-    logger.info("Loading chats from raw JSON data...")
+    finally:
+        path.unlink(missing_ok=True)  # always remove temp file
 
-    mode = cfg.input.mode.lower()
-    if mode not in ["file", "dir"]:
-        logger.error(
-            f"Invalid raw_input.mode: {mode}; must be 'file' or 'dir', defaulting to 'file'"
-        )
-        mode = "file"
-
-    # Handle a single export file (e.g., "result.json")
-    if mode == "file":
-        fp = Path(cfg.input.file)
-        if not fp.is_file():
-            logger.error(f"Raw JSON export file not found: {fp}")
-            raise FileNotFoundError(fp)
-
-        try:
-            data = json.loads(fp.read_text(encoding="utf-8"))
-            raw_chats = data["chats"]["list"]  # Extract the list of chats
-        except Exception as e:
-            logger.error(f"Failed to load raw JSON export file {fp}: {e}")
-            raise
-
-    # Handle a directory of individual chat JSON files
-    elif mode == "dir":
-        dd = Path(cfg.input.dir)
-        if not dd.is_dir():
-            logger.error(f"Raw JSON directory not found: {dd}")
-            raise FileNotFoundError(dd)
-
-        raw_chats = []
-        for chat_file in sorted(dd.glob("*.json")):
-            try:
-                chat_data = json.loads(chat_file.read_text(encoding="utf-8"))
-                raw_chats.append(chat_data)
-            except Exception as e:
-                logger.error(f"Failed to load raw JSON export file {chat_file}: {e}")
-                continue
-
-    logger.info(f"Loaded {len(raw_chats)} chats for processing")
+    logger.info("Loaded %s raw chats from %s", len(raw_chats), path)
 
     # -------------------------------
-    # 3.2) Export: Raw Chats
+    # 2) Export: Raw Chats - local / s3
     # -------------------------------
-    # Since we have no user feature for now, we treat each run as a separate run.
-    # We create a new directory for each run, and store the processed data there.
-    # UUID is used to create a unique directory name for each run.
-
-    run_id = uuid.uuid4().hex  # Generate a fresh run UUID with no dashes
-
     # Define base paths
     base_dir = Path(cfg.output.local_dir)
     run_dir = base_dir / run_id
@@ -199,25 +106,34 @@ def main(cfg: DictConfig) -> None:
         with raw_chats_filepath.open("w", encoding="utf-8") as f:
             json.dump(raw_chats, f, ensure_ascii=False, indent=2)
 
-    # Upload to S3 if configured
-    if "s3" in cfg.output.modes:
-        logger.info(f"Uploading raw chats to S3 bucket {cfg.output.s3_bucket}...")
+    # Upload to S3
+    logger.info(f"Uploading raw chats to S3 bucket {cfg.output.s3_bucket}...")
 
-        try:
-            s3.put_object(
-                Bucket=cfg.output.s3_bucket,
-                Key=f"{run_id}/data/raw.json",
-                Body=json.dumps(raw_chats, ensure_ascii=False, indent=2),
-                Metadata={
-                    "uuid": run_id,
-                },
-            )
-            logger.info(
-                f"Successfully uploaded raw chats to s3://{cfg.output.s3_bucket}/{run_id}/raw.json"
-            )
-        except Exception as e:
-            logger.error(f"Failed to upload raw chats to S3: {e}")
-            raise
+    try:
+        s3_client.put_object(
+            Bucket=cfg.output.s3_bucket,
+            Key=f"{run_id}/data/raw.json",
+            Body=json.dumps(raw_chats, ensure_ascii=False, indent=2),
+            Metadata={
+                "uuid": run_id,
+            },
+        )
+        logger.info(
+            f"Successfully uploaded raw chats to s3://{cfg.output.s3_bucket}/{run_id}/raw.json"
+        )
+    except Exception as e:
+        logger.error(f"Failed to upload raw chats to S3: {e}")
+        raise
+
+    # ---------------------
+    # 3) Tokenizer loading
+    # ---------------------
+    # We need a tokenizer to split chat messages into tokens and obtain token counts, for chunking and filtering:
+    #  - Prefer the same tokenizer family (e.g. BPE, SentencePiece, WordPiece) as our target finetuning model for accuracy.
+    #  - Use HuggingFace’s AutoTokenizer to load the specific tokenizer for the target model.
+    #  - If that fails, fall back to OpenAI’s tiktoken (BPE) for speed and API‑compatibility.
+    logger.info(f"Loading tokenizer for model {cfg.model_id} for token counting...")
+    tokenizer = load_tokenizer(model_name=cfg.model_id)
 
     # --------------------------------------------
     # 4) Build Chat objects
@@ -314,13 +230,10 @@ def main(cfg: DictConfig) -> None:
                 )
                 continue
 
-        else:
-            logger.warning(f"[{contact_name}] No valid messages found, skipping chat.")
-
     logger.info(f"Built {len(chats)} usable chat objects.")
 
     # -------------------------------
-    # 5) Chunking each chat into chat 'blocks'
+    # 5) Chunking each chat into conversation 'blocks'
     # -------------------------------
     # Split each Chat.messages into “blocks” so that each block:
     #   • Maintains temporal context (messages no more than time_threshold_sec apart)
@@ -337,7 +250,7 @@ def main(cfg: DictConfig) -> None:
             f"Invalid token thresholds: min_tokens ({min_tokens}) ≥ max_tokens ({max_tokens}). "
             "Resetting to defaults: min_tokens=100, max_tokens=3000."
         )
-        min_tokens, max_tokens = 200, 700
+        min_tokens, max_tokens = 100, 3000
 
     # variables to track block counts
     num_short_blocks = 0
@@ -653,11 +566,11 @@ def main(cfg: DictConfig) -> None:
         with processed_chats_filepath.open("w", encoding="utf-8") as f:
             json.dump(chat_records, f, ensure_ascii=False, indent=2)
 
-    # 8.3) Upload processed chats to S3 if needed
-    if "s3" in cfg.output.modes and s3 is not None:
+    # 8.3) Upload processed chats to S3
+    if s3_client is not None:
         logger.info(f"Uploading processed chats to S3 bucket {cfg.output.s3_bucket}...")
         try:
-            s3.put_object(
+            s3_client.put_object(
                 Bucket=cfg.output.s3_bucket,
                 Key=f"{run_id}/data/processed.json",
                 Body=json.dumps(chat_records, ensure_ascii=False, indent=2),
@@ -688,11 +601,11 @@ def main(cfg: DictConfig) -> None:
         with training_blocks_filepath.open("w", encoding="utf-8") as f:
             f.write("\n".join(training_block_lines))
 
-    # 8.5) Upload training blocks to S3 if needed
-    if "s3" in cfg.output.modes and s3 is not None:
+    # 8.5) Upload training blocks to S3
+    if s3_client is not None:
         logger.info(f"Uploading training blocks to S3 bucket {cfg.output.s3_bucket}...")
         try:
-            s3.put_object(
+            s3_client.put_object(
                 Bucket=cfg.output.s3_bucket,
                 Key=f"{run_id}/data/train.jsonl",
                 Body="\n".join(training_block_lines),
@@ -704,6 +617,31 @@ def main(cfg: DictConfig) -> None:
         except Exception as e:
             logger.error(f"Failed to upload train.jsonl to S3: {e}")
 
+    # -------------------------------
+    # 9) Send request to fine-tuning service to start the training job
+    # -------------------------------
+    fine_tuning_url = urljoin(os.getenv("FINE_TUNING_SERVICE_URL"), "/fine-tune")
 
-if __name__ == "__main__":
-    main()
+    if not fine_tuning_url:
+        logger.error("FINE_TUNING_SERVICE_URL environment variable is not set.")
+        return chat_stats
+
+    # Send request to start fine-tuning
+    try:
+        response = requests.post(
+            fine_tuning_url,
+            json={"run_id": run_id},
+            headers={"Content-Type": "application/json"},
+        )
+
+        if response.status_code == 200:
+            logger.info(f"Successfully queued fine-tuning job: {response.json()}")
+        else:
+            logger.error(
+                f"Failed to queue fine-tuning job: {response.status_code} - {response.text}"
+            )
+
+    except Exception as e:
+        logger.error(f"Error sending fine-tuning request: {e}")
+
+    return chat_stats

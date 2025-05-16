@@ -1,52 +1,45 @@
-import logging
+# app/core/s3_client.py
 import os
-from typing import Optional
+from functools import lru_cache
+from logging import getLogger
 
 import boto3
 from botocore.exceptions import ClientError
 
-logger = logging.getLogger(__name__)
+from app.core.config import get_settings
+
+logger = getLogger(__name__)
 
 
-def setup_s3_client(
-    region_name: str = "ap-southeast-1",
-    access_key: Optional[str] = None,
-    secret_key: Optional[str] = None,
-) -> boto3.client:
+@lru_cache()
+def get_s3_client():
     """
-    Set up an S3 client for uploading processed data to AWS S3.
-
-    Args:
-        region_name (str): AWS region name (e.g., "us-east-1").
-        access_key (Optional[str]): AWS access key ID. Defaults to environment variable AWS_ACCESS_KEY_ID.
-        secret_key (Optional[str]): AWS secret access key. Defaults to environment variable AWS_SECRET_ACCESS_KEY.
+    Returns a cached boto3 S3 client configured with credentials from Settings.
+    If you later switch to aioboto3/aiobotocore for true async, just replace this function.
 
     Returns:
         boto3.client: Boto3 S3 client object.
     """
+    s = get_settings()
+    # Check if the required environment variables are set
+    if not all([s.AWS_ACCESS_KEY_ID, s.AWS_SECRET_ACCESS_KEY, s.AWS_REGION]):
+        raise ValueError(
+            "AWS credentials and region must be set in the environment variables."
+        )
+
     try:
-        # Use provided credentials or fall back to environment variables
-        access_key = access_key or os.getenv("AWS_ACCESS_KEY_ID")
-        secret_key = secret_key or os.getenv("AWS_SECRET_ACCESS_KEY")
-
-        if not region_name:
-            raise ValueError("region_name is required to set up the S3 client.")
-
-        # Create S3 client
+        # Check if the S3 bucket exists
         s3 = boto3.client(
             "s3",
-            aws_access_key_id=access_key,
-            aws_secret_access_key=secret_key,
-            region_name=region_name,
+            aws_access_key_id=s.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=s.AWS_SECRET_ACCESS_KEY,
+            region_name=s.AWS_REGION,
         )
-        logger.info(f"S3 client setup for {region_name} successful.")
-        return s3
+        s3.head_bucket(Bucket=s.AWS_S3_BUCKET)
+    except ClientError as e:
+        raise RuntimeError(f"Failed to connect to S3: {e}")
 
-    except Exception as e:
-        logger.error(
-            f"Failed to set up S3 client: {e}, S3 upload will be skipped, only local export will be used."
-        )
-        raise
+    return s3
 
 
 # Helper function to upload directory content to S3

@@ -13,7 +13,8 @@ dependencies = [
   "tiktoken>=0.9.0",
   "transformers>=4.51.3",
   "uvicorn>=0.34.2",
-  "torch"
+  "torch",
+  "pydantic-settings>=2.9.1",
 ]
 description = "Add your description here"
 name = "data-prep"

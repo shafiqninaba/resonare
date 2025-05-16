@@ -62,7 +62,7 @@ def submit_data_prep_job(
     }
 
     try:
-        resp = requests.post(f"{base_url}/process", json=payload, timeout=60)
+        resp = requests.post(f"{base_url}/jobs/submit", json=payload, timeout=60)
         resp.raise_for_status()
         return resp.json().get("run_id")
     except requests.RequestException as exc:
@@ -206,14 +206,16 @@ def main() -> None:
         if not run_id:
             st.stop()
         else:
-            st.success(f"🚀 Data processing started! Run ID: **{run_id}**. ")
+            st.success(
+                f"🚀 Data processing job sucessfully queued! Run ID: **{run_id}**. "
+            )
 
-        with st.spinner("Processing…"):
-            info = poll_job(f"{DATA_PREP_URL}/jobs/{run_id}")
+        with st.spinner("Processing raw telegram data…"):
+            info = poll_job(f"{DATA_PREP_URL}/jobs?run_id={run_id}")
 
             if info.get("status") != "completed":
                 st.error(
-                    f"Data prep job for {run_id} did not complete, error: {info.get('error')}"
+                    f"Data prep job for {run_id} failed, error: {info.get('error')}"
                 )
                 st.stop()
             else:
@@ -297,7 +299,7 @@ def main() -> None:
 
                 if t_info.get("status") != "completed":
                     st.error(
-                        f"Fine-tuning job for {run_id} did not complete, error: {t_info.get('error')}"
+                        f"Fine-tuning job for {run_id} failed, error: {t_info.get('error')}"
                     )
                     st.stop()
                 else:
