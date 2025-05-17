@@ -67,6 +67,14 @@ services:
         - action: sync
           path: ./packages/unsloth-backend/main.py
           target: /app/main.py
+        - action: sync
+          path: ./packages/unsloth-backend/routers
+          target: /app/routers
+        - action: sync
+          path: ./packages/unsloth-backend/dependencies.py
+          target: /app/dependencies.py
+
+
 
   frontend:
     build:
