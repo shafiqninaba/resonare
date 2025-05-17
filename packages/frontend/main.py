@@ -259,7 +259,7 @@ def main() -> None:
         current = st.session_state.run_ids[-1]
         st.markdown(f"**Current Run ID:** {current}")
         # Poll data-prep until done
-        with st.spinner(f"Processing data-prep for {current}…"):
+        with st.spinner(f"Processing data-prep for {current}…", show_time=True):
             while True:
                 dp = poll_job(f"{DATA_PREP_URL}/jobs?run_id={current}")
                 if dp.get("status") in ("completed", "failed"):
@@ -273,7 +273,7 @@ def main() -> None:
             st.error(f"Data-prep failed: {dp.get('error')}")
 
         # Poll fine-tune until done
-        with st.spinner(f"Running fine-tune for {current}…"):
+        with st.spinner(f"Running fine-tune for {current}…", show_time=True):
             while True:
                 ft = poll_job(f"{FINE_TUNE_URL}/jobs/{current}")
                 if ft.get("status") in ("completed", "failed"):
