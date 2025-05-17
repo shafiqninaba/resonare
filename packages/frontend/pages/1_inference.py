@@ -1,29 +1,34 @@
-import re  # Import regular expressions module
+import re
 
-import requests  # Assuming you'll use requests to call the backend
+import requests
 import streamlit as st
 import os
 
 from urllib.parse import urljoin
 
-st.title("Chat with Model")
+st.title("Resonare | Chat with your model")
 
 # Initialize chat history and run_id in session state
 if "messages" not in st.session_state:
     st.session_state.messages = []  # Format: [{"role": "user/assistant", "content": "..."}]
     st.session_state.displayed_messages = []  # for streamlit to display to bypass the >>> markdown issue
+
 if "run_id" not in st.session_state:
     st.session_state.run_id = ""
+
+if "run_ids" not in st.session_state:
+    st.session_state.run_ids = []  # List to store run IDs
+
 if "run_id_locked" not in st.session_state:
     st.session_state.run_id_locked = False
 
 # --- Run ID Input ---
-# ... (rest of the Run ID input code remains the same) ...
 run_id_input = st.text_input(
     "Enter Run ID",
-    value=st.session_state.run_id,
+    value=st.session_state.run_ids[-1] if st.session_state.run_ids else "",
     disabled=st.session_state.run_id_locked,
     key="run_id_input_field",  # Add a key to manage its state if needed elsewhere
+    help="32-character string representing the run ID of your model, find it in the job monitor.",
 )
 
 # Update run_id in session state ONLY if not locked

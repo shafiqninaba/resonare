@@ -28,7 +28,7 @@ model_id: "meta-llama/Llama-3.2-1B"  # HuggingFace model ID of the fine-tuning t
 
 # Chat processing options
 target_name: "Ren Hwa"  # Your name in the conversation; converted to "system" in output
-system_prompt: "You are Ren Hwa, a kind, sensitive and somewhat bubbly guy."  # System prompt for the model
+system_prompt: null  # System prompt for the model
 date_limit: None        # Optional: skip messages before this date (e.g., "2025-01-01")
 
 # Conversation block settings
@@ -36,8 +36,8 @@ date_limit: None        # Optional: skip messages before this date (e.g., "2025-
 # This temporal threshold helps preserve coherent chunks of dialogue for training.
 # Token limits help ensure blocks are both consistent and efficient for training: too short = weak context, too long = inefficient.
 convo_block_thereshold_secs: 3600  # Max time gap (in seconds) between messages in a block
-min_tokens_per_block: 300          # Discard blocks shorter than this (low context)
-max_tokens_per_block: 800         # Split or discard blocks longer than this (too large for model input)
+min_tokens_per_block: 200          # Discard blocks shorter than this (low context)
+max_tokens_per_block: 500         # Split or discard blocks longer than this (too large for model input)
 
 # Message formatting
 # Each message in a block is prefixed with this delimiter, simulating the flow of chat, e.g. "User": >>> Hello!"
