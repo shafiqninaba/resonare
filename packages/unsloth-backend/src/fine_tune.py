@@ -1,4 +1,4 @@
-from unsloth import FastLanguageModel
+from unsloth import FastLanguageModel, FastModel
 import torch
 from unsloth.chat_templates import get_chat_template
 from datasets import load_dataset
@@ -46,7 +46,24 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
 
         logger.info("Adding LoRA adapters to the model")
         # Add LoRA adapters to the model
-        model = FastLanguageModel.get_peft_model(
+
+        # Gemma Changes
+        if "gemma" in model_config.name:
+            model = FastModel.get_peft_model(
+            model,
+            finetune_vision_layers     = False, # Turn off for just text!
+            finetune_language_layers   = True,  # Should leave on!
+            finetune_attention_modules = True,  # Attention good for GRPO
+            finetune_mlp_modules       = True,  # SHould leave on always!
+
+            r = 8,           # Larger = higher accuracy, but might overfit
+            lora_alpha = 8,  # Recommended alpha == r at least
+            lora_dropout = 0,
+            bias = "none",
+            random_state = 3407,)
+
+        else:
+            model = FastLanguageModel.get_peft_model(
             model,
             r=lora_config.r,
             target_modules=lora_config.target_modules,
@@ -60,6 +77,7 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
         )
 
         logger.info("LoRA adapters added successfully")
+            
 
         ### DATA PREP ###
         logger.info("Starting data preparation")
@@ -144,12 +162,19 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                     report_to=output_config.report_to,
                 ),
             )
-
-            trainer = train_on_responses_only(
-                trainer,
-                instruction_part = "<|start_header_id|>user<|end_header_id|>\n\n",
-                response_part = "<|start_header_id|>assistant<|end_header_id|>\n\n",
-            )
+            # Gemma Changes
+            if "gemma" in model_config.name:
+                trainer = train_on_responses_only(
+                    trainer,
+                    instruction_part = "<start_of_turn>user\n",
+                    response_part = "<start_of_turn>model\n",
+                )
+            else:
+                trainer = train_on_responses_only(
+                    trainer,
+                    instruction_part = "<|start_header_id|>user<|end_header_id|>\n\n",
+                    response_part = "<|start_header_id|>assistant<|end_header_id|>\n\n",
+                )
             logger.info("Starting training...")
 
             # Show current memory stats

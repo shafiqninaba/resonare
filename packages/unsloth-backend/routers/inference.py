@@ -27,29 +27,47 @@ async def run_inference(request_data: InferenceRequest):
         )
 
         # Use the received message history directly
-        inputs = tokenizer.apply_chat_template(
-            messages,  # Pass the whole conversation
-            tokenize=True,
-            add_generation_prompt=True,  # Add prompt for the assistant to respond
-            return_tensors="pt",
-        ).to("cuda" if torch.cuda.is_available() else "cpu")
+        # inputs = tokenizer.apply_chat_template(
+        #     messages,  # Pass the whole conversation
+        #     tokenize=True,
+        #     add_generation_prompt=True,  # Add prompt for the assistant to respond
+        #     return_tensors="pt",
+        # ).to("cuda" if torch.cuda.is_available() else "cpu")
 
-        # Generate the response
-        # Consider making generation parameters configurable via request_data if needed
-        output_tokens = model.generate(
-            input_ids=inputs,
-            use_cache=True,
-            temperature=1.5,
-            min_p=0.1,
-            pad_token_id=tokenizer.eos_token_id,
-            # You might need to adjust max_new_tokens if context gets long
-            max_new_tokens=64,  # Example: Limit generated tokens
-        )
+        # # Generate the response
+        # # Consider making generation parameters configurable via request_data if needed
+        # output_tokens = model.generate(
+        #     input_ids=inputs,
+        #     use_cache=True,
+        #     temperature=1.5,
+        #     min_p=0.1,
+        #     pad_token_id=tokenizer.eos_token_id,
+        #     # You might need to adjust max_new_tokens if context gets long
+        #     max_new_tokens=64,  # Example: Limit generated tokens
+        # )
 
-        input_length = inputs.shape[1]
-        decoded_output = tokenizer.decode(
-            output_tokens[0, input_length:], skip_special_tokens=True
+        # input_length = inputs.shape[1]
+        # decoded_output = tokenizer.decode(
+        #     output_tokens[0, input_length:], skip_special_tokens=True
+        # )
+         
+        # Gemma Changes
+        text = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt = True, # Must add for generation
+    )
+        print("TEMPLATE TEXT:", text)
+        print("TYPE:", type(text))  
+        print("LENGTH:", len(text))
+        outputs = model.generate(
+            **tokenizer([text], return_tensors = "pt").to("cuda"),
+            max_new_tokens = 64, # Increase for longer outputs!
+            # Recommended Gemma-3 settings!
+            temperature = 1.0, top_p = 0.95, top_k = 64,
         )
+        decoded_output = tokenizer.batch_decode(outputs)
+        decoded_output = decoded_output[0]
 
         logger.info(f"Inference successful for run_id: {run_id}")
         return {"run_id": run_id, "response": decoded_output}

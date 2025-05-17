@@ -16,7 +16,7 @@ from src.general_utils import (
 )
 from src.fine_tune import run_fine_tuning
 from app.models import JobStatus, JobInfo
-from unsloth import FastLanguageModel
+from unsloth import FastLanguageModel, FastModel
 
 # Set up logger
 logger = setup_logger("api")
@@ -183,13 +183,24 @@ async def load_or_get_model(run_id: str):
                 logger.info(
                     f"Loading model and tokenizer from {temp_dir} into memory..."
                 )
-                model, tokenizer = FastLanguageModel.from_pretrained(
-                    model_name=temp_dir,
-                    max_seq_length=MAX_SEQ_LENGTH,
-                    dtype=DTYPE,
-                    load_in_4bit=LOAD_IN_4BIT,
-                )
-                FastLanguageModel.for_inference(model)  # Prepare for inference
+                # model, tokenizer = FastLanguageModel.from_pretrained(
+                #     model_name=temp_dir,
+                #     max_seq_length=MAX_SEQ_LENGTH,
+                #     dtype=DTYPE,
+                #     load_in_4bit=LOAD_IN_4BIT,
+                # )
+                # FastLanguageModel.for_inference(model)  # Prepare for inference
+                
+                # Gemma Changes
+                model, tokenizer = FastModel.from_pretrained(
+                model_name = temp_dir,
+                max_seq_length=MAX_SEQ_LENGTH,
+                dtype=DTYPE,
+                load_in_4bit=LOAD_IN_4BIT,
+            )
+                FastModel.for_inference(model)  # Prepare for inference
+
+
                 logger.info(
                     f"Model and tokenizer for run_id {run_id} loaded successfully."
                 )
