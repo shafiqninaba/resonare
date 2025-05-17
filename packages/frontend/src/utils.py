@@ -117,31 +117,29 @@ def display_chat_summary(stats: Dict[str, Any]) -> None:
     )
     cols2[2].metric(
         "Avg dur (min)", round(stats.get("avg_duration_minutes_per_block", 0), 2)
-    )
+    ) 
+    # Show the top-10 chat distribution as a pie chart
+    breakdown = stats.get("block_breakdown", {})
+    if breakdown:
+        st.subheader("Top-10 Chat Distribution")
+        df = (
+            pd.DataFrame(breakdown.items(), columns=["Chat", "Blocks"])
+            .sort_values("Blocks", ascending=False)
+            .reset_index(drop=True)
+        )
+        top = df.head(10).copy()
+        if len(df) > 10:
+            top.loc[len(top)] = ["Others", df["Blocks"].iloc[10:].sum()]
 
-    # — Right: your actual pie chart —
-    with col2:
-        breakdown = stats.get("block_breakdown", {})
-        if breakdown:
-            st.subheader("Top-10 Chat Distribution")
-            df = (
-                pd.DataFrame(breakdown.items(), columns=["Chat", "Blocks"])
-                .sort_values("Blocks", ascending=False)
-                .reset_index(drop=True)
-            )
-            top = df.head(10).copy()
-            if len(df) > 10:
-                top.loc[len(top)] = ["Others", df["Blocks"].iloc[10:].sum()]
-
-            fig, ax = plt.subplots(figsize=(4, 4))
-            wedges, texts, autopcts = ax.pie(
-                top["Blocks"],
-                labels=top["Chat"],
-                autopct=lambda pct: f"{pct:.1f}%",
-                startangle=90,
-                pctdistance=0.8,
-            )
-            ax.axis("equal")
-            plt.setp(autopcts, size=8, weight="medium")
-            plt.tight_layout()
-            st.pyplot(fig)
+        fig, ax = plt.subplots(figsize=(4, 4))
+        wedges, texts, autopcts = ax.pie(
+            top["Blocks"],
+            labels=top["Chat"],
+            autopct=lambda pct: f"{pct:.1f}%",
+            startangle=90,
+            pctdistance=0.8,
+        )
+        ax.axis("equal")
+        plt.setp(autopcts, size=8, weight="medium")
+        plt.tight_layout()
+        st.pyplot(fig)
