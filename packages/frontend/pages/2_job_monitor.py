@@ -40,14 +40,13 @@ def main() -> None:
     runs and their positions in the queues.
     """
     st.set_page_config(page_title="Resonare – Job Dashboard", layout="wide")
-    st.title("Resonare – Job Monitor")
+    st.title("Resonare | Job Monitor")
     st.markdown("Track your own data-prep and fine-tuning jobs in real time.")
 
     # Retrieve user's run IDs from session state
     run_ids: List[str] = st.session_state.get("run_ids", [])
     if not run_ids:
         st.info("You have no jobs yet. Start a run on the home page.")
-        return
 
     # Fetch job statuses
     raw_dp = _safe_json(f"{DATA_PREP_URL}/jobs")
@@ -101,14 +100,14 @@ def main() -> None:
         df = df[df["run_id"].str.contains(run_id_query, case=False, na=False)]
 
     # Job summary table
-    st.markdown("### 📋 Your Job Summary")
+    st.markdown("### Your Job Summary")
     if df.empty:
         st.info("No matching jobs.")
     else:
         st.dataframe(df.sort_values("created_at", ascending=False), use_container_width=True)
 
     # Queue positions
-    st.markdown("### 📡 Current Queue Positions")
+    st.markdown("### Queued Jobs")
     raw_dp_queue = _safe_json(f"{DATA_PREP_URL}/jobs/queue")
     raw_ft_queue = _safe_json(f"{FINE_TUNE_URL}/queue")
 

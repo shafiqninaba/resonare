@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 import requests
 import streamlit as st
 
-from src.utils import display_summary, parse_json_chats, poll_job
+from src.utils import display_chat_summary, parse_json_chats, poll_job
 
 # Service URLs
 DATA_PREP_URL = os.getenv("DATA_PREP_URL", "http://data-prep:8000")
@@ -119,31 +119,35 @@ def main() -> None:
 
     # --- Step 1: Export Instructions ---
     st.header("📥 Step 1: Export Your Chat Data")
-    st.markdown(
+    with st.expander("Click here for instructions", expanded=False):
+        st.markdown(
+            """
+        **Option A: Export All Chats**
+        1. Telegram Desktop → Settings → Advanced → Export Telegram Data  
+        2. Select the following options:  
+        - **Chats**: Personal chats (Support for groups coming soon)  
+        - **Export format**: JSON  
+        - **Export media**: None  
+        3. Click Export
+
+        **Option B: Export Single Chat**
+        1. Open individual chat in Telegram Desktop  
+        2. Click on the three dots in the top right corner  
+        3. Select **Export chat history**  
+        4. Same settings as above  
+        5. Repeat per chat
         """
-    **Option A: Export All Chats**
-    1. Telegram Desktop → Settings → Advanced → Export Telegram Data  
-    2. Select the following options:  
-    - **Chats**: Personal chats (Support for groups coming soon)  
-    - **Export format**: JSON  
-    - **Export media**: None  
-    3. Click Export
+    )
 
-    **Option B: Export Single Chat**
-    1. Open individual chat in Telegram Desktop  
-    2. Click on the three dots in the top right corner  
-    3. Select **Export chat history**  
-    4. Same settings as above  
-    5. Repeat per chat
+    st.markdown(
+        """ 
+        After exporting, you’ll typically find the files in:  
+        - **Windows**: `C:\\Users\\<username>\\Downloads\\Telegram Desktop\\`  
+        - **macOS**: `~/Downloads/Telegram Desktop/`  
 
-    After exporting, you’ll typically find the files in:  
-    - **Windows**: `C:\\Users\\<username>\\Downloads\\Telegram Desktop\\`  
-    - **macOS**: `~/Downloads/Telegram Desktop/`  
-
-    Drag and drop the JSON files into the box below.
-    """
-)
-
+        Drag and drop the JSON files into the box below.
+        """
+    )
 
     # --- Step 2: Upload ---
     st.header("📤 Step 2: Upload JSON Files")
@@ -168,9 +172,12 @@ def main() -> None:
             options=sender_names,
             help="Select the name to train your LLM twin on.",
         )
+    else:
+        st.warning("No valid chat data found. Please upload JSON file(s) first.")
 
     # --- Advanced Options ---
-    with st.expander("⚙️ Advanced Options (not supported yet)", expanded=False):
+    st.header("Step 4: Advanced Options")
+    with st.expander("Click here for advanced options", expanded=False):
         col1, col2 = st.columns(2)
         with col1:
             system_prompt = st.text_area(
@@ -243,13 +250,14 @@ def main() -> None:
                 max_tokens=max_tokens,
             )
             if run_id:
-                st.success(f"Job sucessfully queued: {run_id}")
+                st.success(f"Job sucessfully queued. Your run id is {run_id}, please save it. This will be used to fetch your model later.")
                 st.session_state.run_ids.append(run_id)
 
     # --- Current Job Status ---
+    st.header("Current Job Status")
     if st.session_state.run_ids:
         current = st.session_state.run_ids[-1]
-        st.header("Current Job Status")
+        st.markdown(f"**Current Run ID:** {current}")
         # Poll data-prep until done
         with st.spinner(f"Processing data-prep for {current}…"):
             while True:
@@ -260,7 +268,7 @@ def main() -> None:
 
         if dp.get("status") == "completed":
             st.success("Data-prep completed!")
-            display_summary(dp.get("stats", {}))
+            display_chat_summary(dp.get("stats", {}))
         else:
             st.error(f"Data-prep failed: {dp.get('error')}")
 
@@ -274,6 +282,11 @@ def main() -> None:
 
         if ft.get("status") == "completed":
             st.success("Fine-tuning completed!")
+            st.page_link(
+            "pages/1_inference.py",
+            label="Click here to start chatting with your trained model",
+            use_container_width=True
+        )
         else:
             st.error(f"Fine-tuning failed: {ft.get('error')}")
 

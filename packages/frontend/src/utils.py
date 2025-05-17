@@ -91,7 +91,7 @@ def poll_job(url: str, interval: int = 10) -> Dict[str, Any]:
         time.sleep(interval)
 
 
-def display_summary(stats: Dict[str, Any]) -> None:
+def display_chat_summary(stats: Dict[str, Any]) -> None:
     """
     Show summary metrics and a Top-10 pie chart of block counts.
 
@@ -119,35 +119,29 @@ def display_summary(stats: Dict[str, Any]) -> None:
         "Avg dur (min)", round(stats.get("avg_duration_minutes_per_block", 0), 2)
     )
 
-    # Pie chart
-    breakdown = stats.get("block_breakdown", {})
-    if not breakdown:
-        return
+    # — Right: your actual pie chart —
+    with col2:
+        breakdown = stats.get("block_breakdown", {})
+        if breakdown:
+            st.subheader("Top-10 Chat Distribution")
+            df = (
+                pd.DataFrame(breakdown.items(), columns=["Chat", "Blocks"])
+                .sort_values("Blocks", ascending=False)
+                .reset_index(drop=True)
+            )
+            top = df.head(10).copy()
+            if len(df) > 10:
+                top.loc[len(top)] = ["Others", df["Blocks"].iloc[10:].sum()]
 
-    st.markdown("### 🥧 Block Distribution (Top 10)")
-
-    df = (
-        pd.DataFrame(breakdown.items(), columns=["Chat", "Blocks"])
-        .sort_values("Blocks", ascending=False)
-        .reset_index(drop=True)
-    )
-
-    top_df = df.head(10).copy()
-    if len(df) > 10:
-        others = df["Blocks"].iloc[10:].sum()
-        top_df.loc[len(top_df)] = ["Others", others]
-
-    values = top_df["Blocks"].tolist()
-    labels = top_df["Chat"].tolist()
-
-    fig, ax = plt.subplots(figsize=(6, 6))
-    wedges, texts, autotexts = ax.pie(
-        values,
-        labels=labels,
-        autopct=lambda pct: f"{pct:.1f}%",
-        startangle=90,
-        pctdistance=0.85,
-    )
-    ax.axis("equal")
-    plt.setp(autotexts, size=9, weight="bold")
-    st.pyplot(fig)
+            fig, ax = plt.subplots(figsize=(4, 4))
+            wedges, texts, autopcts = ax.pie(
+                top["Blocks"],
+                labels=top["Chat"],
+                autopct=lambda pct: f"{pct:.1f}%",
+                startangle=90,
+                pctdistance=0.8,
+            )
+            ax.axis("equal")
+            plt.setp(autopcts, size=8, weight="medium")
+            plt.tight_layout()
+            st.pyplot(fig)
