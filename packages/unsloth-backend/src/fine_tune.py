@@ -182,7 +182,8 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                     response_part = "<|im_start|>assistant\n",
                 )
 
-            elif "llama-3" in model_config.chat_template or "llama-3-8b" in model_config.name:
+            # llama-3-8b has a different chat template then llama-3.2 / llama-3.1
+            elif "llama-3-8b" in model_config.chat_template or "llama-3-8b" in model_config.name:
                 trainer = train_on_responses_only(
                     trainer,
                     instruction_part = "<|start_header_id|>user<|end_header_id|>",
