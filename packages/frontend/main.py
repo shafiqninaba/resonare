@@ -207,6 +207,7 @@ def main() -> None:
                 "unsloth/Meta-Llama-3.1-8B-Instruct-unsloth-bnb-4bit": "llama-3.1",
                 "unsloth/Llama-3.2-1B-Instruct-bnb-4bit": "llama-3.2",
                 "unsloth/Llama-3.2-3B-Instruct-bnb-4bit": "llama-3.2",
+                "unsloth/gemma-3-4b-it-unsloth-bnb-4bit": "gemma-3",
             }
             model_id = st.selectbox(
                 "Base Model", options=list(model_map.keys()),
