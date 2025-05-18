@@ -183,22 +183,22 @@ async def load_or_get_model(run_id: str):
                 logger.info(
                     f"Loading model and tokenizer from {temp_dir} into memory..."
                 )
-                # model, tokenizer = FastLanguageModel.from_pretrained(
-                #     model_name=temp_dir,
-                #     max_seq_length=MAX_SEQ_LENGTH,
-                #     dtype=DTYPE,
-                #     load_in_4bit=LOAD_IN_4BIT,
-                # )
-                # FastLanguageModel.for_inference(model)  # Prepare for inference
+                model, tokenizer = FastLanguageModel.from_pretrained(
+                    model_name=temp_dir,
+                    max_seq_length=MAX_SEQ_LENGTH,
+                    dtype=DTYPE,
+                    load_in_4bit=LOAD_IN_4BIT,
+                )
+                FastLanguageModel.for_inference(model)  # Prepare for inference
                 
                 # Gemma Changes
-                model, tokenizer = FastModel.from_pretrained(
-                model_name = temp_dir,
-                max_seq_length=MAX_SEQ_LENGTH,
-                dtype=DTYPE,
-                load_in_4bit=LOAD_IN_4BIT,
-            )
-                FastModel.for_inference(model)  # Prepare for inference
+            #     model, tokenizer = FastModel.from_pretrained(
+            #     model_name = temp_dir,
+            #     max_seq_length=MAX_SEQ_LENGTH,
+            #     dtype=DTYPE,
+            #     load_in_4bit=LOAD_IN_4BIT,
+            # )
+            #     FastModel.for_inference(model)  # Prepare for inference
 
 
                 logger.info(
