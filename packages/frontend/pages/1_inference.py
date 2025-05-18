@@ -36,6 +36,16 @@ if not st.session_state.run_id_locked:
     st.session_state.run_id = run_id_input
 
 
+# --- Temperature Slider ---
+temperature = st.slider(
+    "Temperature",
+    min_value=0.0,
+    max_value=2.0,
+    value=1.0,
+    step=0.05,
+    help="Controls randomness: higher values (e.g. 1.0) make responses more creative, lower values (e.g. 0.1) make them more focused and predictable."
+)
+
 # Display chat messages from history on app rerun
 for message in st.session_state.displayed_messages:
     with st.chat_message(message["role"]):
@@ -78,6 +88,7 @@ if prompt := st.chat_input("What is up?"):
             payload = {
                 "run_id": st.session_state.run_id,
                 "messages": st.session_state.messages,
+                # "temperature": temperature,  # Add temperature to payload
             }
 
             # Set spinner text based on whether it's the first message

@@ -1,4 +1,4 @@
-from unsloth import FastLanguageModel
+from unsloth import FastLanguageModel, FastModel
 import torch
 from unsloth.chat_templates import get_chat_template
 from datasets import load_dataset
@@ -36,17 +36,46 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
         output_config = cfg.output
 
         # Initialising the model and tokenizer
-        model, tokenizer = FastLanguageModel.from_pretrained(
-            model_name=model_config.name,
-            max_seq_length=model_config.max_seq_length,
-            dtype=model_config.dtype,
-            load_in_4bit=model_config.load_in_4bit,
-        )
-        logger.info(f"Model: {model_config.name} loaded successfully")
+        logger.info(f"Loading model: {model_config.name}")
 
-        logger.info("Adding LoRA adapters to the model")
+        # Gemma Changes
+        if "gemma" in model_config.name:
+            model, tokenizer = FastModel.from_pretrained(
+                model_name = "unsloth/gemma-3-4b-it",
+                max_seq_length = 2048, # Choose any for long context!
+                load_in_4bit = True,  # 4 bit quantization to reduce memory
+                load_in_8bit = False, # [NEW!] A bit more accurate, uses 2x memory
+                full_finetuning = False, # [NEW!] We have full finetuning now!
+                # token = "hf_...", # use one if using gated models
+            )
+        else:
+            model, tokenizer = FastLanguageModel.from_pretrained(
+                model_name=model_config.name,
+                max_seq_length=model_config.max_seq_length,
+                dtype=model_config.dtype,
+                load_in_4bit=model_config.load_in_4bit,
+            )
+        logger.info(f"Model: {model_config.name} loaded successfully")
+ 
         # Add LoRA adapters to the model
-        model = FastLanguageModel.get_peft_model(
+        logger.info("Adding LoRA adapters to the model")
+
+        # Gemma Changes
+        if "gemma" in model_config.name:
+            model = FastModel.get_peft_model(
+            model,
+            finetune_vision_layers     = False, # Turn off for just text!
+            finetune_language_layers   = True,  # Should leave on!
+            finetune_attention_modules = True,  # Attention good for GRPO
+            finetune_mlp_modules       = True,  # SHould leave on always!
+            r = 8,           # Larger = higher accuracy, but might overfit
+            lora_alpha = 8,  # Recommended alpha == r at least
+            lora_dropout = 0,
+            bias = "none",
+            random_state = 3407,)
+
+        else:
+            model = FastLanguageModel.get_peft_model(
             model,
             r=lora_config.r,
             target_modules=lora_config.target_modules,
@@ -60,6 +89,7 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
         )
 
         logger.info("LoRA adapters added successfully")
+            
 
         ### DATA PREP ###
         logger.info("Starting data preparation")
@@ -144,12 +174,41 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                     report_to=output_config.report_to,
                 ),
             )
+            
+            if "chatml" in model_config.chat_template:
+                trainer = train_on_responses_only(
+                    trainer,
+                    instruction_part = "<|im_start|>user\n",
+                    response_part = "<|im_start|>assistant\n",
+                )
 
-            trainer = train_on_responses_only(
-                trainer,
-                instruction_part = "<|start_header_id|>user<|end_header_id|>\n\n",
-                response_part = "<|start_header_id|>assistant<|end_header_id|>\n\n",
-            )
+            # llama-3-8b has a different chat template then llama-3.2 / llama-3.1
+            elif "llama-3-8b" in model_config.chat_template or "llama-3-8b" in model_config.name:
+                trainer = train_on_responses_only(
+                    trainer,
+                    instruction_part = "<|start_header_id|>user<|end_header_id|>",
+                    response_part = "<|start_header_id|>assistant<|end_header_id|>",
+                )
+
+            elif "llama" in model_config.chat_template or "llama" in model_config.name:
+                trainer = train_on_responses_only(
+                    trainer,
+                    instruction_part = "<|start_header_id|>user<|end_header_id|>\n\n",
+                    response_part = "<|start_header_id|>assistant<|end_header_id|>\n\n",
+                )
+
+            elif "gemma" in model_config.chat_template or "gemma" in model_config.name:
+                trainer = train_on_responses_only(
+                    trainer,
+                    instruction_part = "<start_of_turn>user\n",
+                    response_part = "<start_of_turn>model\n",
+                )
+            else:
+                logger.warning(
+                    f"Chat template {model_config.chat_template} not recognized. No training on responses only."
+                )
+                pass
+
             logger.info("Starting training...")
 
             # Show current memory stats

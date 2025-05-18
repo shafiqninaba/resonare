@@ -119,7 +119,7 @@ def main() -> None:
 
     # --- Step 1: Export Instructions ---
     st.header("📥 Step 1: Export Your Chat Data")
-    with st.expander("Click here for instructions", expanded=False):
+    with st.expander("Click here for export instructions", expanded=False):
         st.markdown(
             """
         **Option A: Export All Chats**
@@ -203,9 +203,11 @@ def main() -> None:
             )
         with col2:
             model_map = {
-                "unsloth/gemma-3-12b-it-unsloth-bnb-4bit": "gemma-3",
-                "unsloth/Llama-3.2-3B-Instruct-bnb-4bit": "llama-3.1",
-                "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit": "llama-3.1",
+                "unsloth/llama-3-8b-Instruct-bnb-4bit": "llama-3",
+                "unsloth/Meta-Llama-3.1-8B-Instruct-unsloth-bnb-4bit": "llama-3.1",
+                "unsloth/Llama-3.2-1B-Instruct-bnb-4bit": "llama-3.2",
+                "unsloth/Llama-3.2-3B-Instruct-bnb-4bit": "llama-3.2",
+                "unsloth/gemma-3-4b-it-unsloth-bnb-4bit": "gemma-3",
             }
             model_id = st.selectbox(
                 "Base Model", options=list(model_map.keys()),
@@ -259,7 +261,7 @@ def main() -> None:
         current = st.session_state.run_ids[-1]
         st.markdown(f"**Current Run ID:** {current}")
         # Poll data-prep until done
-        with st.spinner(f"Processing data-prep for {current}…"):
+        with st.spinner(f"Processing data-prep for {current}…", show_time=True):
             while True:
                 dp = poll_job(f"{DATA_PREP_URL}/jobs?run_id={current}")
                 if dp.get("status") in ("completed", "failed"):
@@ -273,7 +275,7 @@ def main() -> None:
             st.error(f"Data-prep failed: {dp.get('error')}")
 
         # Poll fine-tune until done
-        with st.spinner(f"Running fine-tune for {current}…"):
+        with st.spinner(f"Running fine-tune for {current}…", show_time=True):
             while True:
                 ft = poll_job(f"{FINE_TUNE_URL}/jobs/{current}")
                 if ft.get("status") in ("completed", "failed"):
