@@ -20,12 +20,6 @@ output:
   s3_bucket: "resonsare-test-bucket"    # S3 bucket name
   s3_region: "ap-southeast-1"           # AWS region
 
-# Model settings
-# This is the model we're fine-tuning, so we use its tokenizer to count tokens for chunking.
-# Different models have different tokenizers, so we try to use the same model’s tokenizer for accuracy.
-# If the model specific tokenizer can't be loaded, we fall back to TikToken (used by OpenAI models).
-model_id: "meta-llama/Llama-3.2-1B"  # HuggingFace model ID of the fine-tuning target (e.g., LLaMA)
-
 # Chat processing options
 target_name: "Ren Hwa"  # Your name in the conversation; converted to "system" in output
 system_prompt: null  # System prompt for the model
@@ -69,6 +63,10 @@ fine_tuning:
       - up_proj
       - down_proj
 
+# Model settings
+# This is the model we're fine-tuning, so we use its tokenizer to count tokens for chunking.
+# Different models have different tokenizers, so we try to use the same model’s tokenizer for accuracy.
+# If the model specific tokenizer can't be loaded, we fall back to TikToken (used by OpenAI models).
   model:
     name: unsloth/Llama-3.2-3B-Instruct-bnb-4bit #unsloth/gemma-3-4b-it
     max_seq_length: 2048
@@ -86,7 +84,3 @@ fine_tuning:
     lr_scheduler_type: linear
     seed: 3407
     packing: false
-
-  output:
-    dir: outputs
-    report_to: none

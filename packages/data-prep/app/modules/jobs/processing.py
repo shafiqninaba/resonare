@@ -132,8 +132,8 @@ def run_data_processing(
     #  - Prefer the same tokenizer family (e.g. BPE, SentencePiece, WordPiece) as our target finetuning model for accuracy.
     #  - Use HuggingFace’s AutoTokenizer to load the specific tokenizer for the target model.
     #  - If that fails, fall back to OpenAI’s tiktoken (BPE) for speed and API‑compatibility.
-    logger.info(f"Loading tokenizer for model {cfg.model_id} for token counting...")
-    tokenizer = load_tokenizer(model_name=cfg.model_id)
+    logger.info(f"Loading tokenizer for model {cfg.fine_tuning.model.name} for token counting...")
+    tokenizer = load_tokenizer(model_name=cfg.fine_tuning.model.name)
 
     # --------------------------------------------
     # 4) Build Chat objects
@@ -521,7 +521,7 @@ def run_data_processing(
     # --- Manually Define Metadata ---
     metadata_dict = {
         "uuid": run_id,
-        "model_id": cfg.model_id,
+        "model_id": cfg.fine_tuning.model.name,
         "target_name": cfg.target_name,
         "system_prompt": str(cfg.system_prompt) if cfg.system_prompt else "None",
         "date_limit": str(cfg.date_limit) if cfg.date_limit else "None",
@@ -600,6 +600,43 @@ def run_data_processing(
         logger.info(f"Saving training blocks locally to {training_blocks_filepath}...")
         with training_blocks_filepath.open("w", encoding="utf-8") as f:
             f.write("\n".join(training_block_lines))
+
+    
+    fine_tuning_metadata = {
+        # Model settings
+        "model_name": cfg.fine_tuning.model.name,
+        "max_seq_length": str(cfg.fine_tuning.model.max_seq_length),
+        "load_in_4bit": str(cfg.fine_tuning.model.load_in_4bit),
+        "chat_template": cfg.fine_tuning.model.chat_template,
+        
+        # Dataset settings
+        "dataset_split": cfg.fine_tuning.dataset.split,
+        "dataset_num_proc": str(cfg.fine_tuning.dataset.num_proc),
+        
+        # LoRA settings
+        "lora_r": str(cfg.fine_tuning.lora.r),
+        "lora_alpha": str(cfg.fine_tuning.lora.alpha),
+        "lora_dropout": str(cfg.fine_tuning.lora.dropout),
+        "lora_bias": cfg.fine_tuning.lora.bias,
+        "use_gradient_checkpointing": str(cfg.fine_tuning.lora.use_gradient_checkpointing),
+        "random_state": str(cfg.fine_tuning.lora.random_state),
+        "use_rslora": str(cfg.fine_tuning.lora.use_rslora),
+        "target_modules": str(cfg.fine_tuning.lora.target_modules),
+        
+        # Training settings
+        "batch_size": str(cfg.fine_tuning.training.per_device_train_batch_size),
+        "gradient_accumulation_steps": str(cfg.fine_tuning.training.gradient_accumulation_steps),
+        "warmup_steps": str(cfg.fine_tuning.training.warmup_steps),
+        "max_steps": str(cfg.fine_tuning.training.max_steps),
+        "learning_rate": str(cfg.fine_tuning.training.learning_rate),
+        "weight_decay": str(cfg.fine_tuning.training.weight_decay),
+        "lr_scheduler_type": cfg.fine_tuning.training.lr_scheduler_type,
+        "seed": str(cfg.fine_tuning.training.seed),
+        "packing": str(cfg.fine_tuning.training.packing)
+    }
+
+    # Update the metadata_dict with fine-tuning metadata
+    metadata_dict.update({f"ft_{k}": v for k, v in fine_tuning_metadata.items()})
 
     # 8.5) Upload training blocks to S3
     if s3_client is not None:

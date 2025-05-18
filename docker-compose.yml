@@ -44,6 +44,8 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+        limits:
+          memory: 8G
     env_file:
       - .env
     environment:
@@ -82,7 +84,7 @@ services:
       dockerfile: Dockerfile
     command: [uv, run, streamlit, run, main.py]
     ports:
-      - 80:8501
+      - 8501:8501
     env_file:
       - .env
     environment:

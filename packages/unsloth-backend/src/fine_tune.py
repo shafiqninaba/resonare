@@ -1,5 +1,6 @@
 import os
 import tempfile
+import ast
 from typing import Dict
 
 import hydra
@@ -8,141 +9,180 @@ from datasets import load_dataset
 from dotenv import load_dotenv
 from src.general_utils import setup_logger, upload_directory_to_s3
 from transformers import DataCollatorForSeq2Seq, TrainingArguments
-from trl import SFTTrainer
 from unsloth import FastLanguageModel, FastModel, is_bfloat16_supported
 from unsloth.chat_templates import (
     get_chat_template,
     standardize_sharegpt,
     train_on_responses_only,
 )
+from trl import SFTTrainer
 
 load_dotenv()
 
 logger = setup_logger("fine_tuning")
 
 
+def parse_metadata(headers):
+    """Parse S3 metadata headers and convert to appropriate types"""
+    cfg = {}
+    for key, value in headers.items():
+        if key.startswith('x-amz-meta-'):
+            clean_key = key
+            
+            # Handle booleans
+            if value.lower() in ('true', 'false'):
+                cfg[clean_key] = value.lower() == 'true'
+            
+            # Handle integers
+            elif value.isdigit() or (value.startswith('-') and value[1:].isdigit()):
+                cfg[clean_key] = int(value)
+            
+            # Handle floats
+            elif value.replace('.', '', 1).isdigit() or (value.startswith('-') and value[1:].replace('.', '', 1).isdigit()):
+                cfg[clean_key] = float(value)
+            
+            # Handle lists
+            elif value.startswith('[') and value.endswith(']'):
+                try:
+                    cfg[clean_key] = ast.literal_eval(value)
+                except (SyntaxError, ValueError):
+                    # Fallback to string if parsing fails
+                    cfg[clean_key] = value
+            
+            # Keep as string for other values
+            else:
+                cfg[clean_key] = value
+    
+    return cfg
+
+
 def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
     """Background task to run the fine-tuning process"""
     try:
-        # Load configuration
-        with hydra.initialize(config_path="../conf"):
-            cfg = hydra.compose(config_name="config")
+        # # Load configuration
+        # with hydra.initialize(config_path="../conf"):
+        #     cfg = hydra.compose(config_name="config")
 
         logger.info(f"Starting fine-tuning for run_id: {run_id}")
 
-        # Get configurations from hydra config
-        model_config = cfg.model
-        lora_config = cfg.lora
-        dataset_config = cfg.dataset
-        training_config = cfg.training
-        output_config = cfg.output
-
-        # Initialising the model and tokenizer
-        logger.info(f"Loading model: {model_config.name}")
-
-        # Gemma Changes
-        if "gemma" in model_config.name:
-            model, tokenizer = FastModel.from_pretrained(
-                model_name="unsloth/gemma-3-4b-it",
-                max_seq_length=2048,  # Choose any for long context!
-                load_in_4bit=True,  # 4 bit quantization to reduce memory
-                load_in_8bit=False,  # [NEW!] A bit more accurate, uses 2x memory
-                full_finetuning=False,  # [NEW!] We have full finetuning now!
-                # token = "hf_...", # use one if using gated models
-            )
-        else:
-            model, tokenizer = FastLanguageModel.from_pretrained(
-                model_name=model_config.name,
-                max_seq_length=model_config.max_seq_length,
-                dtype=model_config.dtype,
-                load_in_4bit=model_config.load_in_4bit,
-            )
-        logger.info(f"Model: {model_config.name} loaded successfully")
-
-        # Add LoRA adapters to the model
-        logger.info("Adding LoRA adapters to the model")
-
-        # Gemma Changes
-        if "gemma" in model_config.name:
-            model = FastModel.get_peft_model(
-                model,
-                finetune_vision_layers=False,  # Turn off for just text!
-                finetune_language_layers=True,  # Should leave on!
-                finetune_attention_modules=True,  # Attention good for GRPO
-                finetune_mlp_modules=True,  # SHould leave on always!
-                r=8,  # Larger = higher accuracy, but might overfit
-                lora_alpha=8,  # Recommended alpha == r at least
-                lora_dropout=0,
-                bias="none",
-                random_state=3407,
-            )
-
-        else:
-            model = FastLanguageModel.get_peft_model(
-                model,
-                r=lora_config.r,
-                target_modules=lora_config.target_modules,
-                lora_alpha=lora_config.alpha,
-                lora_dropout=lora_config.dropout,
-                bias=lora_config.bias,
-                use_gradient_checkpointing=lora_config.use_gradient_checkpointing,
-                random_state=lora_config.random_state,
-                use_rslora=lora_config.use_rslora,
-                loftq_config=lora_config.loftq_config,
-            )
-
-        logger.info("LoRA adapters added successfully")
-
-        ### DATA PREP ###
-        logger.info("Starting data preparation")
-        tokenizer = get_chat_template(
-            tokenizer,
-            chat_template=model_config.chat_template,
-        )
-
-        def formatting_prompts_func(examples):
-            convos = examples["messages"]
-            texts = [
-                tokenizer.apply_chat_template(
-                    convo, tokenize=False, add_generation_prompt=False
-                )
-                for convo in convos
-            ]
-            return {
-                "text": texts,
-            }
-
-        logger.info(f"Loading and processing dataset from S3 for run_id: {run_id}")
-
-        ### DOWNLOAD DATASET FROM S3 - USING SHARED CLIENT ###
-        s3 = resources["s3_client"]
-        AWS_S3_BUCKET = resources["s3_bucket"]
-
-        # Define the object key (path in S3)
-        object_key = f"{run_id}/data/train.jsonl"
-
-        # Create a temporary directory
+        # # Get configurations from hydra config
+        # model_config = cfg.model
+        # lora_config = cfg.lora
+        # dataset_config = cfg.dataset
+        # training_config = cfg.training
+        # output_config = cfg.output
+        
+        # Create a temporary directory for the entire process
         with tempfile.TemporaryDirectory() as temp_dir:
+            ### DOWNLOAD DATASET FROM S3 FIRST ###
+            logger.info(f"Loading and processing dataset from S3 for run_id: {run_id}")
+            s3 = resources["s3_client"]
+            AWS_S3_BUCKET = resources["s3_bucket"]
+            
+            # Define the object key (path in S3)
+            object_key = f"{run_id}/data/train.jsonl"
+            
             # Extract filename from object_key and create path in temp dir
             filename = os.path.basename(object_key)
             local_file_path = os.path.join(temp_dir, filename)
-
+            
             try:
                 # Download the file
                 s3.download_file(AWS_S3_BUCKET, object_key, local_file_path)
-                logger.info(
-                    f"Successfully downloaded {object_key} to {local_file_path}"
+                cfg_finetuning = s3.head_object(Bucket=AWS_S3_BUCKET, Key=object_key)
+                logger.info(f"Successfully downloaded {object_key} to {local_file_path}")
+                # Parse and convert the metadata to appropriate types
+                raw_headers = cfg_finetuning["ResponseMetadata"]["HTTPHeaders"]
+                cfg = parse_metadata(raw_headers)
+                
+                # Load the raw dataset
+                raw_dataset = load_dataset(
+                    "json", data_files=local_file_path, split=cfg["x-amz-meta-ft_dataset_split"]
                 )
-                dataset = load_dataset(
-                    "json", data_files=local_file_path, split=dataset_config.split
-                )
-
+                
+                # Standardize the format
+                raw_dataset = standardize_sharegpt(raw_dataset)
+                logger.info(f"Raw dataset loaded. Size: {len(raw_dataset)} samples")
+                
             except Exception as e:
-                logger.error(f"Error downloading file: {e}")
+                logger.error(f"Error downloading or loading dataset: {e}")
                 raise
 
-            dataset = standardize_sharegpt(dataset)
-            dataset = dataset.map(
+            # Now that we've loaded the dataset, load the model and tokenizer
+            logger.info(f"Loading model: {cfg["x-amz-meta-ft_model_name"]}")
+
+            # Gemma Changes
+            if "gemma" in cfg["x-amz-meta-ft_model_name"]:
+                model, tokenizer = FastModel.from_pretrained(
+                    model_name="unsloth/gemma-3-4b-it",
+                    max_seq_length=2048,  # Choose any for long context!
+                    load_in_4bit=True,  # 4 bit quantization to reduce memory
+                    load_in_8bit=False,  # [NEW!] A bit more accurate, uses 2x memory
+                    full_finetuning=False,  # [NEW!] We have full finetuning now!
+                    # token = "hf_...", # use one if using gated models
+                )
+            else:
+                model, tokenizer = FastLanguageModel.from_pretrained(
+                    model_name=cfg["x-amz-meta-ft_model_name"],
+                    max_seq_length=cfg["x-amz-meta-ft_max_seq_length"],
+                    dtype=None,
+                    load_in_4bit=cfg["x-amz-meta-ft_load_in_4bit"],
+                )
+            logger.info(f"Model: {cfg["x-amz-meta-ft_model_name"]} loaded successfully")
+
+            # Add LoRA adapters to the model
+            logger.info("Adding LoRA adapters to the model")
+
+            # Gemma Changes
+            if "gemma" in cfg["x-amz-meta-ft_model_name"]:
+                model = FastModel.get_peft_model(
+                    model,
+                    finetune_vision_layers=False,  # Turn off for just text!
+                    finetune_language_layers=True,  # Should leave on!
+                    finetune_attention_modules=True,  # Attention good for GRPO
+                    finetune_mlp_modules=True,  # SHould leave on always!
+                    r=cfg["x-amz-meta-ft_lora_r"],  # Larger = higher accuracy, but might overfit
+                    lora_alpha=cfg["x-amz-meta-ft_lora_alpha"],  # Recommended alpha == r at least
+                    lora_dropout=cfg["x-amz-meta-ft_lora_dropout"],
+                    bias=cfg["x-amz-meta-ft_lora_bias"],
+                    random_state=cfg["x-amz-meta-ft_random_state"],
+                )
+            else:
+                model = FastLanguageModel.get_peft_model(
+                    model,
+                    r=cfg["x-amz-meta-ft_lora_r"],
+                    target_modules=cfg["x-amz-meta-ft_target_modules"],
+                    lora_alpha=cfg["x-amz-meta-ft_lora_alpha"],
+                    lora_dropout=cfg["x-amz-meta-ft_lora_dropout"],
+                    bias=cfg["x-amz-meta-ft_lora_bias"],
+                    use_gradient_checkpointing=cfg["x-amz-meta-ft_use_gradient_checkpointing"],
+                    random_state=cfg["x-amz-meta-ft_random_state"],
+                    use_rslora=cfg["x-amz-meta-ft_use_rslora"],
+                    loftq_config=None,
+                )
+            logger.info("LoRA adapters added successfully")
+
+            # Now process the dataset with the tokenizer
+            logger.info("Processing dataset with tokenizer")
+            tokenizer = get_chat_template(
+                tokenizer,
+                chat_template=cfg["x-amz-meta-ft_chat_template"],
+            )
+
+            def formatting_prompts_func(examples):
+                convos = examples["messages"]
+                texts = [
+                    tokenizer.apply_chat_template(
+                        convo, tokenize=False, add_generation_prompt=False
+                    )
+                    for convo in convos
+                ]
+                return {
+                    "text": texts,
+                }
+
+            # Apply formatting to the dataset
+            dataset = raw_dataset.map(
                 formatting_prompts_func,
                 batched=True,
             )
@@ -154,30 +194,30 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 tokenizer=tokenizer,
                 train_dataset=dataset,
                 dataset_text_field="text",
-                max_seq_length=model_config.max_seq_length,
+                max_seq_length=cfg["x-amz-meta-ft_max_seq_length"],
                 data_collator=DataCollatorForSeq2Seq(tokenizer=tokenizer),
                 dataset_num_proc=1,
-                packing=training_config.packing,
+                packing=cfg["x-amz-meta-ft_packing"],
                 args=TrainingArguments(
-                    per_device_train_batch_size=training_config.per_device_train_batch_size,
-                    gradient_accumulation_steps=training_config.gradient_accumulation_steps,
-                    warmup_steps=training_config.warmup_steps,
+                    per_device_train_batch_size=cfg["x-amz-meta-ft_batch_size"],
+                    gradient_accumulation_steps=cfg["x-amz-meta-ft_gradient_accumulation_steps"],
+                    warmup_steps=cfg["x-amz-meta-ft_warmup_steps"],
                     num_train_epochs=1,  # Set this for 1 full training run.
-                    # max_steps=training_config.max_steps,
-                    learning_rate=training_config.learning_rate,
+                    # max_steps=cfg["x-amz-meta-ft_max_steps"],
+                    learning_rate=cfg["x-amz-meta-ft_learning_rate"],
                     fp16=not is_bfloat16_supported(),
                     bf16=is_bfloat16_supported(),
                     logging_steps=1,
                     optim="adamw_8bit",
-                    weight_decay=training_config.weight_decay,
-                    lr_scheduler_type=training_config.lr_scheduler_type,
-                    seed=training_config.seed,
-                    output_dir=os.path.join(temp_dir, output_config.dir),
-                    report_to=output_config.report_to,
+                    weight_decay=cfg["x-amz-meta-ft_weight_decay"],
+                    lr_scheduler_type=cfg["x-amz-meta-ft_lr_scheduler_type"],
+                    seed=cfg["x-amz-meta-ft_seed"],
+                    output_dir=os.path.join(temp_dir, "outputs"),
+                    report_to=None,
                 ),
             )
 
-            if "chatml" in model_config.chat_template:
+            if "chatml" in cfg["x-amz-meta-ft_chat_template"]:
                 trainer = train_on_responses_only(
                     trainer,
                     instruction_part="<|im_start|>user\n",
@@ -186,8 +226,8 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
 
             # llama-3-8b has a different chat template then llama-3.2 / llama-3.1
             elif (
-                "llama-3-8b" in model_config.chat_template
-                or "llama-3-8b" in model_config.name
+                "llama-3-8b" in cfg["x-amz-meta-ft_chat_template"]
+                or "llama-3-8b" in cfg["x-amz-meta-ft_model_name"]
             ):
                 trainer = train_on_responses_only(
                     trainer,
@@ -195,14 +235,14 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                     response_part="<|start_header_id|>assistant<|end_header_id|>",
                 )
 
-            elif "llama" in model_config.chat_template or "llama" in model_config.name:
+            elif "llama" in cfg["x-amz-meta-ft_chat_template"] or "llama" in cfg["x-amz-meta-ft_model_name"]:
                 trainer = train_on_responses_only(
                     trainer,
                     instruction_part="<|start_header_id|>user<|end_header_id|>\n\n",
                     response_part="<|start_header_id|>assistant<|end_header_id|>\n\n",
                 )
 
-            elif "gemma" in model_config.chat_template or "gemma" in model_config.name:
+            elif "gemma" in cfg["x-amz-meta-ft_chat_template"] or "gemma" in cfg["x-amz-meta-ft_model_name"]:
                 trainer = train_on_responses_only(
                     trainer,
                     instruction_part="<start_of_turn>user\n",
@@ -210,7 +250,7 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 )
             else:
                 logger.warning(
-                    f"Chat template {model_config.chat_template} not recognized. No training on responses only."
+                    f"Chat template {cfg["x-amz-meta-ft_chat_template"]} not recognized. No training on responses only."
                 )
                 pass
 
@@ -257,7 +297,7 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
 
             # Saving the final model as LoRA adapters to temp directory
             model.save_pretrained(lora_model_temp_path)
-            tokenizer.save_pretrained(lora_model_temp_path)
+            tokenizer.save_pretrained(lora_model_temp_path)        
 
             logger.info("Model artifacts saved in temporary directory")
 
