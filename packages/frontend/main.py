@@ -7,7 +7,6 @@ from typing import Any, Dict, List, Optional
 
 import requests
 import streamlit as st
-
 from src.utils import display_chat_summary, parse_json_chats, poll_job
 
 # Service URLs
@@ -51,6 +50,7 @@ def submit_data_prep_job(
     except requests.RequestException as exc:
         st.error(f"Data-prep submission failed: {exc}")
         return None
+
 
 def submit_fine_tune_job(
     run_id: str,
@@ -137,7 +137,7 @@ def main() -> None:
         4. Same settings as above  
         5. Repeat per chat
         """
-    )
+        )
 
     st.markdown(
         """ 
@@ -181,14 +181,16 @@ def main() -> None:
         col1, col2 = st.columns(2)
         with col1:
             system_prompt = st.text_area(
-                "System Prompt (optional)", height=100, help="Define the personality or tone for your twin.",
+                "System Prompt (optional)",
+                height=100,
+                help="Define the personality or tone for your twin.",
             )
             date_limit_date = st.date_input(
-                "Start Date (optional)", value=None, help="Include messages from this date onward.",
+                "Start Date (optional)",
+                value=None,
+                help="Include messages from this date onward.",
             )
-            date_limit = (
-                date_limit_date.isoformat() if date_limit_date else None
-            )
+            date_limit = date_limit_date.isoformat() if date_limit_date else None
             convo_secs = st.number_input(
                 "Block Time Threshold (secs)",
                 min_value=0,
@@ -196,10 +198,16 @@ def main() -> None:
                 help="Split conversations if messages are farther apart than this.",
             )
             min_tokens = st.number_input(
-                "Min Tokens per Block", min_value=0, value=None, help="Minimum tokens in a conversation block.",
+                "Min Tokens per Block",
+                min_value=0,
+                value=None,
+                help="Minimum tokens in a conversation block.",
             )
             max_tokens = st.number_input(
-                "Max Tokens per Block", min_value=0, value=None, help="Maximum tokens in a conversation block.",
+                "Max Tokens per Block",
+                min_value=0,
+                value=None,
+                help="Maximum tokens in a conversation block.",
             )
         with col2:
             model_map = {
@@ -210,28 +218,48 @@ def main() -> None:
                 "unsloth/gemma-3-4b-it-unsloth-bnb-4bit": "gemma-3",
             }
             model_id = st.selectbox(
-                "Base Model", options=list(model_map.keys()),
-                format_func=lambda k: model_map[k], help="Choose a base checkpoint for fine-tuning.",
+                "Base Model",
+                options=list(model_map.keys()),
+                format_func=lambda k: model_map[k],
+                help="Choose a base checkpoint for fine-tuning.",
             )
             chat_template = model_map[model_id]
 
             lora_r = st.number_input(
-                "LoRA Rank (r)", min_value=1, value=None, help="Low-rank matrix dimension (capacity vs speed).",
+                "LoRA Rank (r)",
+                min_value=1,
+                value=None,
+                help="Low-rank matrix dimension (capacity vs speed).",
             )
             lora_alpha = st.number_input(
-                "LoRA Alpha", min_value=1, value=None, help="Scaling factor; typically equals r.",
+                "LoRA Alpha",
+                min_value=1,
+                value=None,
+                help="Scaling factor; typically equals r.",
             )
             batch_size = st.number_input(
-                "Batch Size", min_value=1, value=None,  help="Examples per GPU batch.",
+                "Batch Size",
+                min_value=1,
+                value=None,
+                help="Examples per GPU batch.",
             )
             grad_accum = st.number_input(
-                "Gradient Accumulation Steps", min_value=1, value=None,  help="Simulate a larger effective batch size.",
+                "Gradient Accumulation Steps",
+                min_value=1,
+                value=None,
+                help="Simulate a larger effective batch size.",
             )
             warmup_steps = st.number_input(
-                "Warmup Steps", min_value=0, value=None, help="LR scheduler warmup period."
+                "Warmup Steps",
+                min_value=0,
+                value=None,
+                help="LR scheduler warmup period.",
             )
             max_steps = st.number_input(
-                "Max Training Steps", min_value=1, value=None, help="Total training steps."
+                "Max Training Steps",
+                min_value=1,
+                value=None,
+                help="Total training steps.",
             )
 
     # --- Submission ---
@@ -252,7 +280,9 @@ def main() -> None:
                 max_tokens=max_tokens,
             )
             if run_id:
-                st.success(f"Job sucessfully queued. Your run id is {run_id}, please save it. This will be used to fetch your model later.")
+                st.success(
+                    f"Job sucessfully queued. Your run id is {run_id}, please save it. This will be used to fetch your model later."
+                )
                 st.session_state.run_ids.append(run_id)
 
     # --- Current Job Status ---
@@ -285,10 +315,10 @@ def main() -> None:
         if ft.get("status") == "completed":
             st.success("Fine-tuning completed!")
             st.page_link(
-            "pages/1_inference.py",
-            label="Click here to start chatting with your trained model",
-            use_container_width=True
-        )
+                "pages/1_inference.py",
+                label="Click here to start chatting with your trained model",
+                use_container_width=True,
+            )
         else:
             st.error(f"Fine-tuning failed: {ft.get('error')}")
 

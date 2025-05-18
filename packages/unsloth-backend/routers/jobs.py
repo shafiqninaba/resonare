@@ -1,10 +1,9 @@
 from datetime import datetime
 from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException
-
-from app.dependencies import job_queue, job_status, job_running, resources, logger
+from app.dependencies import job_queue, job_running, job_status, logger, resources
 from app.models import JobInfo, JobStatus, RunIDRequest, TrainingResponse
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter(tags=["jobs"])
 

@@ -1,9 +1,9 @@
-import torch
-from fastapi import APIRouter, HTTPException
 from typing import Dict
 
+import torch
 from app.dependencies import load_or_get_model, logger
 from app.models import InferenceRequest
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter(tags=["inference"])
 
@@ -50,22 +50,22 @@ async def run_inference(request_data: InferenceRequest):
         decoded_output = tokenizer.decode(
             output_tokens[0, input_length:], skip_special_tokens=True
         )
-         
+
         # Gemma Changes
-    #     text = tokenizer.apply_chat_template(
-    #     messages,
-    #     tokenize=False,
-    #     add_generation_prompt = True, # Must add for generation
-    # )
-    #     outputs = model.generate(
-    #         **tokenizer([text], return_tensors = "pt").to("cuda"),
-    #         max_new_tokens = 64, # Increase for longer outputs!
-    #         # Recommended Gemma-3 settings!
-    #         temperature = 1.0, top_p = 0.95, top_k = 64,
-    #     )
-    #     decoded_output = tokenizer.batch_decode(outputs)
-    #     decoded_output = decoded_output[0]
-    
+        #     text = tokenizer.apply_chat_template(
+        #     messages,
+        #     tokenize=False,
+        #     add_generation_prompt = True, # Must add for generation
+        # )
+        #     outputs = model.generate(
+        #         **tokenizer([text], return_tensors = "pt").to("cuda"),
+        #         max_new_tokens = 64, # Increase for longer outputs!
+        #         # Recommended Gemma-3 settings!
+        #         temperature = 1.0, top_p = 0.95, top_k = 64,
+        #     )
+        #     decoded_output = tokenizer.batch_decode(outputs)
+        #     decoded_output = decoded_output[0]
+
         logger.info(f"Inference successful for run_id: {run_id}")
         return {"run_id": run_id, "response": decoded_output}
 

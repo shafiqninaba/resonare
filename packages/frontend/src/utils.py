@@ -117,7 +117,7 @@ def display_chat_summary(stats: Dict[str, Any]) -> None:
     )
     cols2[2].metric(
         "Avg dur (min)", round(stats.get("avg_duration_minutes_per_block", 0), 2)
-    ) 
+    )
     # Show the top-10 chat distribution as a pie chart
     breakdown = stats.get("block_breakdown", {})
     if breakdown:

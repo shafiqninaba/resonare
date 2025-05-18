@@ -1,18 +1,20 @@
-from unsloth import FastLanguageModel, FastModel
-import torch
-from unsloth.chat_templates import get_chat_template
-from datasets import load_dataset
-from trl import SFTTrainer
-from transformers import TrainingArguments, DataCollatorForSeq2Seq
-from unsloth import is_bfloat16_supported
-from unsloth.chat_templates import train_on_responses_only
-from unsloth.chat_templates import standardize_sharegpt
-import hydra
-from src.general_utils import setup_logger, upload_directory_to_s3
 import os
 import tempfile
-from dotenv import load_dotenv
 from typing import Dict
+
+import hydra
+import torch
+from datasets import load_dataset
+from dotenv import load_dotenv
+from src.general_utils import setup_logger, upload_directory_to_s3
+from transformers import DataCollatorForSeq2Seq, TrainingArguments
+from trl import SFTTrainer
+from unsloth import FastLanguageModel, FastModel, is_bfloat16_supported
+from unsloth.chat_templates import (
+    get_chat_template,
+    standardize_sharegpt,
+    train_on_responses_only,
+)
 
 load_dotenv()
 
@@ -41,11 +43,11 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
         # Gemma Changes
         if "gemma" in model_config.name:
             model, tokenizer = FastModel.from_pretrained(
-                model_name = "unsloth/gemma-3-4b-it",
-                max_seq_length = 2048, # Choose any for long context!
-                load_in_4bit = True,  # 4 bit quantization to reduce memory
-                load_in_8bit = False, # [NEW!] A bit more accurate, uses 2x memory
-                full_finetuning = False, # [NEW!] We have full finetuning now!
+                model_name="unsloth/gemma-3-4b-it",
+                max_seq_length=2048,  # Choose any for long context!
+                load_in_4bit=True,  # 4 bit quantization to reduce memory
+                load_in_8bit=False,  # [NEW!] A bit more accurate, uses 2x memory
+                full_finetuning=False,  # [NEW!] We have full finetuning now!
                 # token = "hf_...", # use one if using gated models
             )
         else:
@@ -56,40 +58,40 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 load_in_4bit=model_config.load_in_4bit,
             )
         logger.info(f"Model: {model_config.name} loaded successfully")
- 
+
         # Add LoRA adapters to the model
         logger.info("Adding LoRA adapters to the model")
 
         # Gemma Changes
         if "gemma" in model_config.name:
             model = FastModel.get_peft_model(
-            model,
-            finetune_vision_layers     = False, # Turn off for just text!
-            finetune_language_layers   = True,  # Should leave on!
-            finetune_attention_modules = True,  # Attention good for GRPO
-            finetune_mlp_modules       = True,  # SHould leave on always!
-            r = 8,           # Larger = higher accuracy, but might overfit
-            lora_alpha = 8,  # Recommended alpha == r at least
-            lora_dropout = 0,
-            bias = "none",
-            random_state = 3407,)
+                model,
+                finetune_vision_layers=False,  # Turn off for just text!
+                finetune_language_layers=True,  # Should leave on!
+                finetune_attention_modules=True,  # Attention good for GRPO
+                finetune_mlp_modules=True,  # SHould leave on always!
+                r=8,  # Larger = higher accuracy, but might overfit
+                lora_alpha=8,  # Recommended alpha == r at least
+                lora_dropout=0,
+                bias="none",
+                random_state=3407,
+            )
 
         else:
             model = FastLanguageModel.get_peft_model(
-            model,
-            r=lora_config.r,
-            target_modules=lora_config.target_modules,
-            lora_alpha=lora_config.alpha,
-            lora_dropout=lora_config.dropout,
-            bias=lora_config.bias,
-            use_gradient_checkpointing=lora_config.use_gradient_checkpointing,
-            random_state=lora_config.random_state,
-            use_rslora=lora_config.use_rslora,
-            loftq_config=lora_config.loftq_config,
-        )
+                model,
+                r=lora_config.r,
+                target_modules=lora_config.target_modules,
+                lora_alpha=lora_config.alpha,
+                lora_dropout=lora_config.dropout,
+                bias=lora_config.bias,
+                use_gradient_checkpointing=lora_config.use_gradient_checkpointing,
+                random_state=lora_config.random_state,
+                use_rslora=lora_config.use_rslora,
+                loftq_config=lora_config.loftq_config,
+            )
 
         logger.info("LoRA adapters added successfully")
-            
 
         ### DATA PREP ###
         logger.info("Starting data preparation")
@@ -160,7 +162,7 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                     per_device_train_batch_size=training_config.per_device_train_batch_size,
                     gradient_accumulation_steps=training_config.gradient_accumulation_steps,
                     warmup_steps=training_config.warmup_steps,
-                    num_train_epochs = 1, # Set this for 1 full training run.
+                    num_train_epochs=1,  # Set this for 1 full training run.
                     # max_steps=training_config.max_steps,
                     learning_rate=training_config.learning_rate,
                     fp16=not is_bfloat16_supported(),
@@ -174,34 +176,37 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                     report_to=output_config.report_to,
                 ),
             )
-            
+
             if "chatml" in model_config.chat_template:
                 trainer = train_on_responses_only(
                     trainer,
-                    instruction_part = "<|im_start|>user\n",
-                    response_part = "<|im_start|>assistant\n",
+                    instruction_part="<|im_start|>user\n",
+                    response_part="<|im_start|>assistant\n",
                 )
 
             # llama-3-8b has a different chat template then llama-3.2 / llama-3.1
-            elif "llama-3-8b" in model_config.chat_template or "llama-3-8b" in model_config.name:
+            elif (
+                "llama-3-8b" in model_config.chat_template
+                or "llama-3-8b" in model_config.name
+            ):
                 trainer = train_on_responses_only(
                     trainer,
-                    instruction_part = "<|start_header_id|>user<|end_header_id|>",
-                    response_part = "<|start_header_id|>assistant<|end_header_id|>",
+                    instruction_part="<|start_header_id|>user<|end_header_id|>",
+                    response_part="<|start_header_id|>assistant<|end_header_id|>",
                 )
 
             elif "llama" in model_config.chat_template or "llama" in model_config.name:
                 trainer = train_on_responses_only(
                     trainer,
-                    instruction_part = "<|start_header_id|>user<|end_header_id|>\n\n",
-                    response_part = "<|start_header_id|>assistant<|end_header_id|>\n\n",
+                    instruction_part="<|start_header_id|>user<|end_header_id|>\n\n",
+                    response_part="<|start_header_id|>assistant<|end_header_id|>\n\n",
                 )
 
             elif "gemma" in model_config.chat_template or "gemma" in model_config.name:
                 trainer = train_on_responses_only(
                     trainer,
-                    instruction_part = "<start_of_turn>user\n",
-                    response_part = "<start_of_turn>model\n",
+                    instruction_part="<start_of_turn>user\n",
+                    response_part="<start_of_turn>model\n",
                 )
             else:
                 logger.warning(
@@ -234,7 +239,7 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 f"{trainer_stats.metrics['train_runtime']} seconds used for training."
             )
             logger.info(
-                f"{round(trainer_stats.metrics['train_runtime']/60, 2)} minutes used for training."
+                f"{round(trainer_stats.metrics['train_runtime'] / 60, 2)} minutes used for training."
             )
             logger.debug(f"Peak reserved memory = {used_memory} GB.")
             logger.debug(

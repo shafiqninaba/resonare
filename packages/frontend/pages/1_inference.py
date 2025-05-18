@@ -1,10 +1,9 @@
+import os
 import re
+from urllib.parse import urljoin
 
 import requests
 import streamlit as st
-import os
-
-from urllib.parse import urljoin
 
 st.title("Resonare | Chat with your model")
 
@@ -43,7 +42,7 @@ temperature = st.slider(
     max_value=2.0,
     value=1.0,
     step=0.05,
-    help="Controls randomness: higher values (e.g. 1.0) make responses more creative, lower values (e.g. 0.1) make them more focused and predictable."
+    help="Controls randomness: higher values (e.g. 1.0) make responses more creative, lower values (e.g. 0.1) make them more focused and predictable.",
 )
 
 # Display chat messages from history on app rerun

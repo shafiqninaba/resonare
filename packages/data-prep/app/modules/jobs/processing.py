@@ -409,7 +409,6 @@ def run_data_processing(
             logger.error(
                 f"Failed to create system message, skipping system prompts: {e}"
             )
-            
 
     for chat in chats:
         valid_blocks: List[Block] = []
