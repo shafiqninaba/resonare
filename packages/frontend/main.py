@@ -239,10 +239,12 @@ def main() -> None:
             )
         with col2:
             model_map = {
-                "unsloth/llama-3-8b-Instruct-bnb-4bit": "llama-3",
                 "unsloth/Meta-Llama-3.1-8B-Instruct-unsloth-bnb-4bit": "llama-3.1",
-                "unsloth/Llama-3.2-1B-Instruct-unsloth-bnb-4bit": "llama-3.2",
-                "unsloth/Llama-3.2-3B-Instruct-unsloth-bnb-4bit": "llama-3.2", #unsloth prefix indicate that they are Unsloth dynamic 4-bit quants. These models consume slightly more VRAM than standard BitsAndBytes 4-bit models but offer significantly higher accuracy.
+                "unsloth/Llama-3.2-3B-Instruct-unsloth-bnb-4bit": "llama-3.2", 
+                "unsloth/llama-3-8b-Instruct-bnb-4bit": "llama-3",               
+                # unsloth prefix indicate that they are Unsloth dynamic 4-bit quants. 
+                # These models consume slightly more VRAM than standard BitsAndBytes 4-bit models but offer significantly higher accuracy.
+                # "unsloth/Llama-3.2-1B-Instruct-unsloth-bnb-4bit": "llama-3.2",
                 # "unsloth/Llama-3.2-1B-Instruct-bnb-4bit": "llama-3.2",
                 # "unsloth/gemma-3-4b-it-unsloth-bnb-4bit": "gemma-3",
             }
