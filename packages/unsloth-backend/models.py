@@ -39,3 +39,4 @@ class InferenceRequest(BaseModel):
     messages: List[
         Dict[str, str]
     ]  # e.g., [{"role": "user", "content": "..."}, {"role": "assistant", ...}]
+    temperature: Optional[float] = 1.5

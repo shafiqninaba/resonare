@@ -242,7 +242,7 @@ def main() -> None:
                 "unsloth/llama-3-8b-Instruct-bnb-4bit": "llama-3",
                 "unsloth/Meta-Llama-3.1-8B-Instruct-unsloth-bnb-4bit": "llama-3.1",
                 "unsloth/Llama-3.2-1B-Instruct-bnb-4bit": "llama-3.2",
-                "unsloth/gemma-3-4b-it-unsloth-bnb-4bit": "gemma-3",
+                # "unsloth/gemma-3-4b-it-unsloth-bnb-4bit": "gemma-3",
             }
             model_id = st.selectbox(
                 "Base Model",
@@ -316,9 +316,14 @@ def main() -> None:
 
             )
             if run_id:
-                st.success(
-                    f"Job sucessfully queued. Your run id is {run_id}, please save it. This will be used to fetch your model later."
-                )
+                st.success("Job successfully queued.")
+                st.markdown(f"""
+                **Run ID:**
+                ```
+                {run_id}
+                ```
+                Please save your run ID. This will be used to fetch your model later.
+                """)
                 st.session_state.run_ids.append(run_id)
 
     # --- Current Job Status ---

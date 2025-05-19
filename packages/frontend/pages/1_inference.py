@@ -45,6 +45,13 @@ temperature = st.slider(
     help="Controls randomness: higher values (e.g. 1.0) make responses more creative, lower values (e.g. 0.1) make them more focused and predictable.",
 )
 
+# --- Training Metadata ---
+# Display training metadata in a collapsible section
+if "train_metadata" in st.session_state:
+    with st.expander("Training Metadata", expanded=False):
+        st.json(st.session_state.train_metadata)
+
+
 # Display chat messages from history on app rerun
 for message in st.session_state.displayed_messages:
     with st.chat_message(message["role"]):
@@ -87,7 +94,7 @@ if prompt := st.chat_input("What is up?"):
             payload = {
                 "run_id": st.session_state.run_id,
                 "messages": st.session_state.messages,
-                # "temperature": temperature,  # Add temperature to payload
+                "temperature": temperature,  # Add temperature to payload
             }
 
             # Set spinner text based on whether it's the first message
@@ -107,6 +114,10 @@ if prompt := st.chat_input("What is up?"):
                 assistant_response_content = api_response.get(
                     "response", "Error: No response field found in API JSON."
                 )
+                train_metadata = api_response.get(
+                    "metadata", {}
+                )
+                st.session_state.train_metadata = train_metadata
                 if (
                     "Error:" in assistant_response_content
                 ):  # Check if the content itself is an error message
@@ -139,9 +150,9 @@ if prompt := st.chat_input("What is up?"):
         # Display assistant response(s)
         if is_error or not assistant_response_content:
             # Display the error as a single message
-            with st.chat_message("assistant"):
+            with st.chat_message(train_metadata["x-amz-meta-target_name"]):
                 st.markdown(
-                    assistant_response_content or "Error: Empty response received."
+                    f"{train_metadata["x-amz-meta-target_name"]}: {assistant_response_content}" or "Error: Empty response received."
                 )
             # Add the single error message to history
             # Check if the error message is already the last message to avoid duplicates on rerun
@@ -167,9 +178,9 @@ if prompt := st.chat_input("What is up?"):
                     part.strip()
                 )  # Remove leading/trailing whitespace/newlines
                 if cleaned_part:  # Only display and add non-empty parts
-                    with st.chat_message("assistant"):
-                        st.markdown(cleaned_part)
+                    with st.chat_message(train_metadata["x-amz-meta-target_name"]):
+                        st.markdown(f"{train_metadata["x-amz-meta-target_name"]}: {cleaned_part}")
                     # Add each part as a separate message to chat history
                     st.session_state.displayed_messages.append(
-                        {"role": "assistant", "content": cleaned_part}
+                        {"role": train_metadata["x-amz-meta-target_name"], "content": f"{train_metadata["x-amz-meta-target_name"]}: {cleaned_part}"}
                     )
