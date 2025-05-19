@@ -178,6 +178,9 @@ async def load_or_get_model(run_id: str):
                     f"Successfully downloaded model from s3://{S3_BUCKET}/{dir_name} to {temp_dir}"
                 )
 
+                # get target_name from train.jsonl file
+                train_metadata = resources["s3_client"].head_object(Bucket=S3_BUCKET, Key=f"{run_id}/data/train.jsonl")["ResponseMetadata"]["HTTPHeaders"]
+
                 # Load the model and tokenizer from the temporary directory
                 logger.info(
                     f"Loading model and tokenizer from {temp_dir} into memory..."
@@ -204,7 +207,7 @@ async def load_or_get_model(run_id: str):
                 )
 
                 # --- Store in cache ---
-                model_cache[run_id] = (model, tokenizer)
+                model_cache[run_id] = (model, tokenizer, train_metadata)
                 logger.info(f"Model for run_id {run_id} stored in cache.")
 
             except Exception as e:

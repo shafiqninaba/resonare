@@ -13,6 +13,7 @@ async def run_inference(request_data: InferenceRequest):
     """Runs inference using a cached model specified by run_id, using conversation history."""
     run_id = request_data.run_id
     messages = request_data.messages  # Get the list of messages from the request
+    temperature = request_data.temperature  # Get the temperature from the request
 
     # Basic validation: Ensure messages list is not empty
     if not messages:
@@ -20,7 +21,7 @@ async def run_inference(request_data: InferenceRequest):
 
     try:
         # Get model and tokenizer (loads from S3 and caches if not already loaded)
-        model, tokenizer = await load_or_get_model(run_id)
+        model, tokenizer, train_metadata = await load_or_get_model(run_id)
 
         logger.info(
             f"Running inference for run_id: {run_id} with {len(messages)} messages..."
@@ -39,7 +40,7 @@ async def run_inference(request_data: InferenceRequest):
         output_tokens = model.generate(
             input_ids=inputs,
             use_cache=True,
-            temperature=1.5,
+            temperature=temperature,
             min_p=0.1,
             pad_token_id=tokenizer.eos_token_id,
             # You might need to adjust max_new_tokens if context gets long
@@ -67,7 +68,7 @@ async def run_inference(request_data: InferenceRequest):
         #     decoded_output = decoded_output[0]
 
         logger.info(f"Inference successful for run_id: {run_id}")
-        return {"run_id": run_id, "response": decoded_output}
+        return {"run_id": run_id, "response": decoded_output, "metadata": train_metadata}
 
     except HTTPException as http_exc:
         # Re-raise HTTPExceptions (like model loading failures)
