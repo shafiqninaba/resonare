@@ -44,8 +44,8 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-        limits:
-          memory: 8G
+        # limits:
+        #   memory: 8G
     env_file:
       - .env
     environment:
