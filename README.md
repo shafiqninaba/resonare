@@ -63,8 +63,30 @@
 
 ### Description
 
-#### Software Architecture
+short description of the project
+motivation, whatnot
 
+
+#### Overview
+
+##### Software Architecture
+The diagram below shows the high-level architecture of the application.
+
+![Architecture](assets/images/software-architecture.png)
+
+
+#### Data-Prep
+
+##### Software Architecture
+The diagram below shows the high-level architecture of the application.
+
+![Architecture](assets/images/software-architecture.png)
+
+##### Key Components
+
+#### Fine-Tuning
+
+##### Software Architecture
 The diagram below shows the high-level architecture of the application.
 
 ![Architecture](assets/images/software-architecture.png)
