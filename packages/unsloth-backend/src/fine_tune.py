@@ -347,6 +347,9 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
 
             # 4) Push both model + tokenizer in one try block
             try:
+                logger.info(
+                    f"Uploading model and tokenizer to Hugging Face Hub ({repo_id})"
+                )
                 model.push_to_hub(
                     repo_id=repo_id,
                     use_auth_token=hf_token,
