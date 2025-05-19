@@ -1,4 +1,3 @@
-from typing import Dict
 
 import torch
 from app.dependencies import load_or_get_model, logger
@@ -44,7 +43,7 @@ async def run_inference(request_data: InferenceRequest):
             min_p=0.1,
             pad_token_id=tokenizer.eos_token_id,
             # You might need to adjust max_new_tokens if context gets long
-            max_new_tokens=64,  # Example: Limit generated tokens
+            max_new_tokens=128,  # Example: Limit generated tokens
         )
 
         input_length = inputs.shape[1]
@@ -68,7 +67,11 @@ async def run_inference(request_data: InferenceRequest):
         #     decoded_output = decoded_output[0]
 
         logger.info(f"Inference successful for run_id: {run_id}")
-        return {"run_id": run_id, "response": decoded_output, "metadata": train_metadata}
+        return {
+            "run_id": run_id,
+            "response": decoded_output,
+            "metadata": train_metadata,
+        }
 
     except HTTPException as http_exc:
         # Re-raise HTTPExceptions (like model loading failures)

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict
 
-from app.dependencies import job_queue, job_running, job_status, logger, resources
+from app.dependencies import job_queue, job_running, job_status, resources
 from app.models import JobInfo, JobStatus, RunIDRequest, TrainingResponse
 from fastapi import APIRouter, HTTPException
 

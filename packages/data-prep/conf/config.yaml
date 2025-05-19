@@ -3,6 +3,9 @@ hydra:
   run:
     dir: "."  # Run tasks in the current directory
 
+# --------------------------------------------------------------------
+# Data Preparation settings
+# --------------------------------------------------------------------
 # Input and output file paths
 # - Telegram allows exporting chats either as a single JSON file (often named result.json) 
 #   or as multiple JSON files, one per chat, stored in a directory.
@@ -39,7 +42,16 @@ max_tokens_per_block: 500         # Split or discard blocks longer than this (to
 message_delimiter: ">>>"  # Prefix for each message line
 
 
-# Fine Tuning settings
+# --------------------------------------------------------------------
+# Fine-tuning settings
+# --------------------------------------------------------------------
+# This section configures the fine-tuning process for the model.
+# It includes settings for:
+# 1. Dataset settings
+# 2. LoRA settings
+# 3. Model settings
+# 4. Training settings
+
 fine_tuning:
   dataset:
     split: train
@@ -63,16 +75,29 @@ fine_tuning:
       - up_proj
       - down_proj
 
-# Model settings
-# This is the model we're fine-tuning, so we use its tokenizer to count tokens for chunking.
-# Different models have different tokenizers, so we try to use the same model’s tokenizer for accuracy.
-# If the model specific tokenizer can't be loaded, we fall back to TikToken (used by OpenAI models).
+
+# unsloth prefix indicate that they are Unsloth dynamic 4-bit quants. 
+# These models consume slightly more VRAM than standard BitsAndBytes 4-bit models but offer significantly higher accuracy.
   model:
-    name: unsloth/Llama-3.2-3B-Instruct-bnb-4bit #unsloth/gemma-3-4b-it
+    name: unsloth/Llama-3.2-3B-Instruct-bnb-4bit
+    # unsloth/llama-3-8b-Instruct-bnb-4bit
+    # unsloth/Meta-Llama-3.1-8B-Instruct-unsloth-bnb-4bit
+    # unsloth/Llama-3.2-1B-Instruct-unsloth-bnb-4bit
+    # unsloth/Llama-3.2-3B-Instruct-unsloth-bnb-4bit
+    # unsloth/gemma-3-1b-it-unsloth-bnb-4bit  
+    # unsloth/gemma-3-4b-it-unsloth-bnb-4bit
+    # unsloth/mistral-7b-instruct-v0.3
+    
     max_seq_length: 2048
     dtype:
     load_in_4bit: true
-    chat_template: llama-3.1 #gemma-3 
+    chat_template: llama-3.2
+    # llama-3
+    # llama-3.1
+    # llama-3.2
+    # gemma-3 
+    # mistral
+    # chatml
 
   training:
     per_device_train_batch_size: 1

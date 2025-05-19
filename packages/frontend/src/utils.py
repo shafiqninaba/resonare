@@ -1,7 +1,6 @@
 """Utility functions for the Resonare Streamlit frontend."""
 
 import json
-import textwrap
 import time
 from collections import Counter
 from typing import Any, Dict, List, Tuple

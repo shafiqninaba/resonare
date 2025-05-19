@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import time
-from datetime import date
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -239,15 +238,18 @@ def main() -> None:
             )
         with col2:
             model_map = {
-                "unsloth/llama-3-8b-Instruct-bnb-4bit": "llama-3",
                 "unsloth/Meta-Llama-3.1-8B-Instruct-unsloth-bnb-4bit": "llama-3.1",
-                "unsloth/Llama-3.2-1B-Instruct-bnb-4bit": "llama-3.2",
+                "unsloth/Llama-3.2-3B-Instruct-unsloth-bnb-4bit": "llama-3.2",
+                "unsloth/llama-3-8b-Instruct-bnb-4bit": "llama-3",
+                # unsloth prefix indicate that they are Unsloth dynamic 4-bit quants.
+                # These models consume slightly more VRAM than standard BitsAndBytes 4-bit models but offer significantly higher accuracy.
+                # "unsloth/Llama-3.2-1B-Instruct-unsloth-bnb-4bit": "llama-3.2",
+                # "unsloth/Llama-3.2-1B-Instruct-bnb-4bit": "llama-3.2",
                 # "unsloth/gemma-3-4b-it-unsloth-bnb-4bit": "gemma-3",
             }
             model_id = st.selectbox(
                 "Base Model",
                 options=list(model_map.keys()),
-                format_func=lambda k: model_map[k],
                 help="Choose a base checkpoint for fine-tuning.",
             )
             chat_template = model_map[model_id]
@@ -313,7 +315,6 @@ def main() -> None:
                 grad_accum=grad_accum,
                 warmup_steps=warmup_steps,
                 max_steps=max_steps,
-
             )
             if run_id:
                 st.success("Job successfully queued.")

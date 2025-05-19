@@ -114,9 +114,7 @@ if prompt := st.chat_input("What is up?"):
                 assistant_response_content = api_response.get(
                     "response", "Error: No response field found in API JSON."
                 )
-                train_metadata = api_response.get(
-                    "metadata", {}
-                )
+                train_metadata = api_response.get("metadata", {})
                 st.session_state.train_metadata = train_metadata
                 if (
                     "Error:" in assistant_response_content
@@ -152,7 +150,8 @@ if prompt := st.chat_input("What is up?"):
             # Display the error as a single message
             with st.chat_message(train_metadata["x-amz-meta-target_name"]):
                 st.markdown(
-                    f"{train_metadata["x-amz-meta-target_name"]}: {assistant_response_content}" or "Error: Empty response received."
+                    f"{train_metadata['x-amz-meta-target_name']}: {assistant_response_content}"
+                    or "Error: Empty response received."
                 )
             # Add the single error message to history
             # Check if the error message is already the last message to avoid duplicates on rerun
@@ -179,8 +178,13 @@ if prompt := st.chat_input("What is up?"):
                 )  # Remove leading/trailing whitespace/newlines
                 if cleaned_part:  # Only display and add non-empty parts
                     with st.chat_message(train_metadata["x-amz-meta-target_name"]):
-                        st.markdown(f"{train_metadata["x-amz-meta-target_name"]}: {cleaned_part}")
+                        st.markdown(
+                            f"{train_metadata['x-amz-meta-target_name']}: {cleaned_part}"
+                        )
                     # Add each part as a separate message to chat history
                     st.session_state.displayed_messages.append(
-                        {"role": train_metadata["x-amz-meta-target_name"], "content": f"{train_metadata["x-amz-meta-target_name"]}: {cleaned_part}"}
+                        {
+                            "role": train_metadata["x-amz-meta-target_name"],
+                            "content": f"{train_metadata['x-amz-meta-target_name']}: {cleaned_part}",
+                        }
                     )
