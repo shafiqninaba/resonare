@@ -321,6 +321,51 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                     f"Model artifacts for run {run_id} failed to upload to S3"
                 )
 
+            # Upload the models to huggingface hub
+            hf_user  = os.getenv("HUGGINGFACE_USERNAME")
+            hf_token = os.getenv("HUGGINGFACE_TOKEN")
+
+            # 2) Bail early with actionable warnings
+            if not hf_user:
+                logger.warning(
+                    "HUGGINGFACE_USERNAME not set; skipping upload. "
+                    "Please export HUGGINGFACE_USERNAME=<your-hf-username>."
+                )
+                return
+
+            if not hf_token:
+                logger.warning(
+                    "HUGGINGFACE_TOKEN not found; skipping upload. "
+                    "Please export HUGGINGFACE_TOKEN=<your-hf-token>."
+                )
+                return
+
+            # 3) Build repo_id once
+            model_name = cfg["x-amz-meta-ft_model_name"]
+            repo_name  = f"{model_name}-{run_id}"
+            repo_id    = f"{hf_user}/{repo_name}"
+
+            # 4) Push both model + tokenizer in one try block
+            try:
+                model.push_to_hub(
+                    repo_id=repo_id,
+                    use_auth_token=hf_token,
+                    private=True,
+                )
+                tokenizer.push_to_hub(
+                    repo_id=repo_id,
+                    use_auth_token=hf_token,
+                    private=True,
+                )
+                logger.info(
+                    f"Successfully uploaded run {run_id} artifacts to Hugging Face Hub ({repo_id})"
+                )
+
+            except Exception:
+                logger.exception(
+                    f"Failed to upload run {run_id} artifacts to Hugging Face Hub ({repo_id})"
+                )
+
     except Exception as e:
         logger.error(f"Error in fine-tuning process for run {run_id}: {str(e)}")
         raise
