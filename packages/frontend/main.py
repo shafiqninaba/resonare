@@ -22,6 +22,14 @@ def submit_data_prep_job(
     convo_secs: Optional[int] = None,
     min_tokens: Optional[int] = None,
     max_tokens: Optional[int] = None,
+    model_id: Optional[str] = None,
+    chat_template: Optional[str] = None,
+    lora_r: Optional[int] = None,
+    lora_alpha: Optional[int] = None,
+    batch_size: Optional[int] = None,
+    grad_accum: Optional[int] = None,
+    warmup_steps: Optional[int] = None,
+    max_steps: Optional[int] = None,
     base_url: str = DATA_PREP_URL,
 ) -> Optional[str]:
     """
@@ -32,6 +40,8 @@ def submit_data_prep_job(
     Returns the run_id on success, or None on error.
     """
     payload: Dict[str, Any] = {"chats": chats, "target_name": target_name}
+
+    # data-prep options
     if system_prompt:
         payload["system_prompt"] = system_prompt
     if date_limit:
@@ -42,6 +52,24 @@ def submit_data_prep_job(
         payload["min_tokens_per_block"] = min_tokens
     if max_tokens is not None:
         payload["max_tokens_per_block"] = max_tokens
+
+    # fine-tuning options
+    if model_id:
+        payload["name"] = model_id
+    if chat_template:
+        payload["chat_template"] = chat_template
+    if lora_r is not None:
+        payload["r"] = lora_r
+    if lora_alpha is not None:
+        payload["alpha"] = lora_alpha
+    if batch_size is not None:
+        payload["per_device_train_batch_size"] = batch_size
+    if grad_accum is not None:
+        payload["gradient_accumulation_steps"] = grad_accum
+    if warmup_steps is not None:
+        payload["warmup_steps"] = warmup_steps
+    if max_steps is not None:
+        payload["max_steps"] = max_steps
 
     try:
         resp = requests.post(f"{base_url}/jobs/submit", json=payload, timeout=60)
@@ -277,6 +305,15 @@ def main() -> None:
                 convo_secs=convo_secs,
                 min_tokens=min_tokens,
                 max_tokens=max_tokens,
+                model_id=model_id,
+                chat_template=chat_template,
+                lora_r=lora_r,
+                lora_alpha=lora_alpha,
+                batch_size=batch_size,
+                grad_accum=grad_accum,
+                warmup_steps=warmup_steps,
+                max_steps=max_steps,
+
             )
             if run_id:
                 st.success(

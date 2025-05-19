@@ -49,11 +49,50 @@ def run_data_processing(
         cfg = hydra.compose(config_name="config")
 
     # Apply overrides
+    logger.info(f"Applying configuration overrides: {overrides}")
+    override_counts = {
+        'main': 0,
+        'dataset': 0, 
+        'lora': 0,
+        'model': 0,
+        'training': 0,
+        'skipped': 0
+    }
+    logger.info(f"cfg.fine_tuning.dataset: {cfg.fine_tuning.dataset}")
+    logger.info(f"cfg.fine_tuning.lora: {cfg.fine_tuning.lora}")
+    logger.info(f"cfg.fine_tuning.model: {cfg.fine_tuning.model}")
+    logger.info(f"cfg.fine_tuning.training: {cfg.fine_tuning.training}")
+    logger.info(f"cfg: {cfg}")
     for key, value in overrides.items():
         if hasattr(cfg, key):  # Check if the attribute exists in cfg
+            logger.debug(f"Applying main config override: {key}={value}")
             setattr(cfg, key, value)
+            override_counts['main'] += 1
+        elif hasattr(cfg.fine_tuning.dataset, key):
+            logger.debug(f"Applying dataset override: {key}={value}")
+            setattr(cfg.fine_tuning.dataset, key, value)
+            override_counts['dataset'] += 1
+        elif hasattr(cfg.fine_tuning.lora, key):
+            logger.debug(f"Applying LoRA override: {key}={value}")
+            setattr(cfg.fine_tuning.lora, key, value)
+            override_counts['lora'] += 1
+        elif hasattr(cfg.fine_tuning.model, key):
+            logger.debug(f"Applying model override: {key}={value}")
+            setattr(cfg.fine_tuning.model, key, value)
+            override_counts['model'] += 1
+        elif hasattr(cfg.fine_tuning.training, key):
+            logger.debug(f"Applying training override: {key}={value}")
+            setattr(cfg.fine_tuning.training, key, value)
+            override_counts['training'] += 1
         else:
             logger.warning(f"Override skipped: '{key}' not found in configuration.")
+            override_counts['skipped'] += 1
+
+    logger.info(
+        f"Override summary - Main: {override_counts['main']}, Dataset: {override_counts['dataset']}, "
+        f"LoRA: {override_counts['lora']}, Model: {override_counts['model']}, "
+        f"Training: {override_counts['training']}, Skipped: {override_counts['skipped']}"
+    )
 
     s3_client: boto3.client | None = get_s3_client()
 
