@@ -179,7 +179,9 @@ async def load_or_get_model(run_id: str):
                 )
 
                 # get target_name from train.jsonl file
-                train_metadata = resources["s3_client"].head_object(Bucket=S3_BUCKET, Key=f"{run_id}/data/train.jsonl")["ResponseMetadata"]["HTTPHeaders"]
+                train_metadata = resources["s3_client"].head_object(
+                    Bucket=S3_BUCKET, Key=f"{run_id}/data/train.jsonl"
+                )["ResponseMetadata"]["HTTPHeaders"]
 
                 # Load the model and tokenizer from the temporary directory
                 logger.info(

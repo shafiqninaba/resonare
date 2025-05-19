@@ -49,16 +49,25 @@ class DataPrepRequest(BaseModel):
     min_tokens_per_block: int = Field(300, description="Minimum tokens per block")
     max_tokens_per_block: int = Field(800, description="Maximum tokens per block")
     message_delimiter: str = Field(">>>", description="Prefix for merged lines")
-    
+
     # fine-tuning parameters
     name: Optional[str] = Field(None, description="Model ID for fine-tuning")
-    chat_template: Optional[str] = Field(None, description="Template format for chat messages")
+    chat_template: Optional[str] = Field(
+        None, description="Template format for chat messages"
+    )
     r: Optional[int] = Field(None, description="LoRA rank parameter")
     alpha: Optional[int] = Field(None, description="LoRA alpha parameter")
-    per_device_train_batch_size: Optional[int] = Field(None, description="Batch size for training")
-    gradient_accumulation_steps: Optional[int] = Field(None, description="Gradient accumulation steps")
+    per_device_train_batch_size: Optional[int] = Field(
+        None, description="Batch size for training"
+    )
+    gradient_accumulation_steps: Optional[int] = Field(
+        None, description="Gradient accumulation steps"
+    )
     warmup_steps: Optional[int] = Field(None, description="Number of warmup steps")
-    max_steps: Optional[int] = Field(None, description="Maximum number of training steps")
+    max_steps: Optional[int] = Field(
+        None, description="Maximum number of training steps"
+    )
+
 
 class DataPrepRequestResponse(BaseModel):
     """Standard response returned after submitting a preprocessing job.

@@ -26,33 +26,35 @@ def parse_metadata(headers):
     """Parse S3 metadata headers and convert to appropriate types"""
     cfg = {}
     for key, value in headers.items():
-        if key.startswith('x-amz-meta-'):
+        if key.startswith("x-amz-meta-"):
             clean_key = key
-            
+
             # Handle booleans
-            if value.lower() in ('true', 'false'):
-                cfg[clean_key] = value.lower() == 'true'
-            
+            if value.lower() in ("true", "false"):
+                cfg[clean_key] = value.lower() == "true"
+
             # Handle integers
-            elif value.isdigit() or (value.startswith('-') and value[1:].isdigit()):
+            elif value.isdigit() or (value.startswith("-") and value[1:].isdigit()):
                 cfg[clean_key] = int(value)
-            
+
             # Handle floats
-            elif value.replace('.', '', 1).isdigit() or (value.startswith('-') and value[1:].replace('.', '', 1).isdigit()):
+            elif value.replace(".", "", 1).isdigit() or (
+                value.startswith("-") and value[1:].replace(".", "", 1).isdigit()
+            ):
                 cfg[clean_key] = float(value)
-            
+
             # Handle lists
-            elif value.startswith('[') and value.endswith(']'):
+            elif value.startswith("[") and value.endswith("]"):
                 try:
                     cfg[clean_key] = ast.literal_eval(value)
                 except (SyntaxError, ValueError):
                     # Fallback to string if parsing fails
                     cfg[clean_key] = value
-            
+
             # Keep as string for other values
             else:
                 cfg[clean_key] = value
-    
+
     return cfg
 
 
@@ -71,45 +73,49 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
         # dataset_config = cfg.dataset
         # training_config = cfg.training
         # output_config = cfg.output
-        
+
         # Create a temporary directory for the entire process
         with tempfile.TemporaryDirectory() as temp_dir:
             ### DOWNLOAD DATASET FROM S3 FIRST ###
             logger.info(f"Loading and processing dataset from S3 for run_id: {run_id}")
             s3 = resources["s3_client"]
             AWS_S3_BUCKET = resources["s3_bucket"]
-            
+
             # Define the object key (path in S3)
             object_key = f"{run_id}/data/train.jsonl"
-            
+
             # Extract filename from object_key and create path in temp dir
             filename = os.path.basename(object_key)
             local_file_path = os.path.join(temp_dir, filename)
-            
+
             try:
                 # Download the file
                 s3.download_file(AWS_S3_BUCKET, object_key, local_file_path)
                 cfg_finetuning = s3.head_object(Bucket=AWS_S3_BUCKET, Key=object_key)
-                logger.info(f"Successfully downloaded {object_key} to {local_file_path}")
+                logger.info(
+                    f"Successfully downloaded {object_key} to {local_file_path}"
+                )
                 # Parse and convert the metadata to appropriate types
                 raw_headers = cfg_finetuning["ResponseMetadata"]["HTTPHeaders"]
                 cfg = parse_metadata(raw_headers)
-                
+
                 # Load the raw dataset
                 raw_dataset = load_dataset(
-                    "json", data_files=local_file_path, split=cfg["x-amz-meta-ft_dataset_split"]
+                    "json",
+                    data_files=local_file_path,
+                    split=cfg["x-amz-meta-ft_dataset_split"],
                 )
-                
+
                 # Standardize the format
                 raw_dataset = standardize_sharegpt(raw_dataset)
                 logger.info(f"Raw dataset loaded. Size: {len(raw_dataset)} samples")
-                
+
             except Exception as e:
                 logger.error(f"Error downloading or loading dataset: {e}")
                 raise
 
             # Now that we've loaded the dataset, load the model and tokenizer
-            logger.info(f"Loading model: {cfg["x-amz-meta-ft_model_name"]}")
+            logger.info(f"Loading model: {cfg['x-amz-meta-ft_model_name']}")
 
             # Gemma Changes
             if "gemma" in cfg["x-amz-meta-ft_model_name"]:
@@ -128,7 +134,7 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                     dtype=None,
                     load_in_4bit=cfg["x-amz-meta-ft_load_in_4bit"],
                 )
-            logger.info(f"Model: {cfg["x-amz-meta-ft_model_name"]} loaded successfully")
+            logger.info(f"Model: {cfg['x-amz-meta-ft_model_name']} loaded successfully")
 
             # Add LoRA adapters to the model
             logger.info("Adding LoRA adapters to the model")
@@ -141,8 +147,12 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                     finetune_language_layers=True,  # Should leave on!
                     finetune_attention_modules=True,  # Attention good for GRPO
                     finetune_mlp_modules=True,  # SHould leave on always!
-                    r=cfg["x-amz-meta-ft_lora_r"],  # Larger = higher accuracy, but might overfit
-                    lora_alpha=cfg["x-amz-meta-ft_lora_alpha"],  # Recommended alpha == r at least
+                    r=cfg[
+                        "x-amz-meta-ft_lora_r"
+                    ],  # Larger = higher accuracy, but might overfit
+                    lora_alpha=cfg[
+                        "x-amz-meta-ft_lora_alpha"
+                    ],  # Recommended alpha == r at least
                     lora_dropout=cfg["x-amz-meta-ft_lora_dropout"],
                     bias=cfg["x-amz-meta-ft_lora_bias"],
                     random_state=cfg["x-amz-meta-ft_random_state"],
@@ -155,7 +165,9 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                     lora_alpha=cfg["x-amz-meta-ft_lora_alpha"],
                     lora_dropout=cfg["x-amz-meta-ft_lora_dropout"],
                     bias=cfg["x-amz-meta-ft_lora_bias"],
-                    use_gradient_checkpointing=cfg["x-amz-meta-ft_use_gradient_checkpointing"],
+                    use_gradient_checkpointing=cfg[
+                        "x-amz-meta-ft_use_gradient_checkpointing"
+                    ],
                     random_state=cfg["x-amz-meta-ft_random_state"],
                     use_rslora=cfg["x-amz-meta-ft_use_rslora"],
                     loftq_config=None,
@@ -200,7 +212,9 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 packing=cfg["x-amz-meta-ft_packing"],
                 args=TrainingArguments(
                     per_device_train_batch_size=cfg["x-amz-meta-ft_batch_size"],
-                    gradient_accumulation_steps=cfg["x-amz-meta-ft_gradient_accumulation_steps"],
+                    gradient_accumulation_steps=cfg[
+                        "x-amz-meta-ft_gradient_accumulation_steps"
+                    ],
                     warmup_steps=cfg["x-amz-meta-ft_warmup_steps"],
                     num_train_epochs=1,  # Set this for 1 full training run.
                     # max_steps=cfg["x-amz-meta-ft_max_steps"],
@@ -235,14 +249,20 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                     response_part="<|start_header_id|>assistant<|end_header_id|>",
                 )
 
-            elif "llama" in cfg["x-amz-meta-ft_chat_template"] or "llama" in cfg["x-amz-meta-ft_model_name"]:
+            elif (
+                "llama" in cfg["x-amz-meta-ft_chat_template"]
+                or "llama" in cfg["x-amz-meta-ft_model_name"]
+            ):
                 trainer = train_on_responses_only(
                     trainer,
                     instruction_part="<|start_header_id|>user<|end_header_id|>\n\n",
                     response_part="<|start_header_id|>assistant<|end_header_id|>\n\n",
                 )
 
-            elif "gemma" in cfg["x-amz-meta-ft_chat_template"] or "gemma" in cfg["x-amz-meta-ft_model_name"]:
+            elif (
+                "gemma" in cfg["x-amz-meta-ft_chat_template"]
+                or "gemma" in cfg["x-amz-meta-ft_model_name"]
+            ):
                 trainer = train_on_responses_only(
                     trainer,
                     instruction_part="<start_of_turn>user\n",
@@ -250,7 +270,7 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 )
             else:
                 logger.warning(
-                    f"Chat template {cfg["x-amz-meta-ft_chat_template"]} not recognized. No training on responses only."
+                    f"Chat template {cfg['x-amz-meta-ft_chat_template']} not recognized. No training on responses only."
                 )
                 pass
 
@@ -297,7 +317,7 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
 
             # Saving the final model as LoRA adapters to temp directory
             model.save_pretrained(lora_model_temp_path)
-            tokenizer.save_pretrained(lora_model_temp_path)        
+            tokenizer.save_pretrained(lora_model_temp_path)
 
             logger.info("Model artifacts saved in temporary directory")
 
@@ -322,7 +342,7 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 )
 
             # Upload the models to huggingface hub
-            hf_user  = os.getenv("HUGGINGFACE_USERNAME")
+            hf_user = os.getenv("HUGGINGFACE_USERNAME")
             hf_token = os.getenv("HUGGINGFACE_TOKEN")
 
             # 2) Bail early with actionable warnings
@@ -342,8 +362,8 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
 
             # 3) Build repo_id once
             model_name = cfg["x-amz-meta-ft_model_name"].split("/")[-1]
-            repo_name  = f"{model_name}-{run_id}"
-            repo_id    = f"{hf_user}/{repo_name}"
+            repo_name = f"{model_name}-{run_id}"
+            repo_id = f"{hf_user}/{repo_name}"
 
             # 4) Push both model + tokenizer in one try block
             try:

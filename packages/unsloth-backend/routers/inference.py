@@ -68,7 +68,11 @@ async def run_inference(request_data: InferenceRequest):
         #     decoded_output = decoded_output[0]
 
         logger.info(f"Inference successful for run_id: {run_id}")
-        return {"run_id": run_id, "response": decoded_output, "metadata": train_metadata}
+        return {
+            "run_id": run_id,
+            "response": decoded_output,
+            "metadata": train_metadata,
+        }
 
     except HTTPException as http_exc:
         # Re-raise HTTPExceptions (like model loading failures)
