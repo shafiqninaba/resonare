@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 
 import torch
-from app.models import JobInfo, JobStatus
+from app.models import JobStatus
 from fastapi import FastAPI, HTTPException
 from src.fine_tune import run_fine_tuning
 from src.general_utils import (

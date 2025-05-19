@@ -1,4 +1,3 @@
-from typing import Dict
 
 import torch
 from app.dependencies import load_or_get_model, logger

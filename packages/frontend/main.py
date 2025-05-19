@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import time
-from datetime import date
 from typing import Any, Dict, List, Optional
 
 import requests
