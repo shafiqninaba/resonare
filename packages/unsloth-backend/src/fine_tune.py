@@ -372,12 +372,12 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 )
                 model.push_to_hub(
                     repo_id=repo_id,
-                    use_auth_token=hf_token,
+                    token=hf_token,
                     private=True,
                 )
                 tokenizer.push_to_hub(
                     repo_id=repo_id,
-                    use_auth_token=hf_token,
+                    token=hf_token,
                     private=True,
                 )
                 logger.info(
