@@ -341,7 +341,7 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 return
 
             # 3) Build repo_id once
-            model_name = cfg["x-amz-meta-ft_model_name"]
+            model_name = cfg["x-amz-meta-ft_model_name"].split("/")[-1]
             repo_name  = f"{model_name}-{run_id}"
             repo_id    = f"{hf_user}/{repo_name}"
 
