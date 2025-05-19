@@ -12,6 +12,7 @@ class Settings(BaseSettings):
         "API for processing JSON data from Telegram chat exports."
     )
 
+    # AWS
     AWS_ACCESS_KEY_ID: str
     AWS_SECRET_ACCESS_KEY: str
     AWS_S3_BUCKET: str = "resonare-test-bucket"
@@ -32,6 +33,4 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     return Settings()
 
-
-# alias so you can do “from app.core.config import settings”
 settings = get_settings()

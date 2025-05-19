@@ -10,6 +10,7 @@ class DataPrepRequest(BaseModel):
 
     Attributes:
         chats (List[Dict[str, Any]]): List of chat dictionaries to be preprocessed.
+        --------------------------------------------------------------------
         target_name (Optional[str]): Name under which to store the processed chat.
         system_prompt (Optional[str]): System message to prepend to every block.
         date_limit (Optional[str]): ISO date string; ignore messages after this date.
@@ -17,6 +18,7 @@ class DataPrepRequest(BaseModel):
         min_tokens_per_block (int): Minimum tokens per block.
         max_tokens_per_block (int): Maximum tokens per block.
         message_delimiter (str): Prefix for merged lines.
+        --------------------------------------------------------------------
         name (Optional[str]): Model ID for fine-tuning.
         chat_template (Optional[str]): Template format for chat messages.
         r (Optional[int]): LoRA rank parameter.
@@ -32,7 +34,9 @@ class DataPrepRequest(BaseModel):
         ..., description="List of chat dictionaries for preprocessing"
     )
 
-    # all the overrides as separate fields, with your defaults
+    # --------------------------------------------------------------------
+    # Data Preparation settings
+    # --------------------------------------------------------------------
     target_name: Optional[str] = Field(
         None, description="Name under which to store processed chat"
     )
@@ -50,7 +54,10 @@ class DataPrepRequest(BaseModel):
     max_tokens_per_block: int = Field(800, description="Maximum tokens per block")
     message_delimiter: str = Field(">>>", description="Prefix for merged lines")
 
-    # fine-tuning parameters
+
+    # --------------------------------------------------------------------
+    # Fine-tuning settings
+    # --------------------------------------------------------------------
     name: Optional[str] = Field(None, description="Model ID for fine-tuning")
     chat_template: Optional[str] = Field(
         None, description="Template format for chat messages"

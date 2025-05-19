@@ -1,12 +1,11 @@
-# app/modules/system/router.py
+# app/system/router.py
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import APIRouter, HTTPException, status
 
-from app.core.config import get_settings
+from app.core.config import settings
 from app.core.s3_client import get_s3_client
 
 router = APIRouter(tags=["system"], prefix="/system")
-settings = get_settings()
 
 
 @router.get("/health")
@@ -26,6 +25,7 @@ async def get_health_status():
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"S3 health check failed: {e}",
         )
+        s3_
 
     return {
         "api": "up",

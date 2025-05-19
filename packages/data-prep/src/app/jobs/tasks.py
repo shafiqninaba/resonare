@@ -1,3 +1,4 @@
+# app/jobs/tasks.py
 from __future__ import annotations
 
 import json
@@ -13,8 +14,6 @@ import hydra
 import requests
 from pydantic import ValidationError
 
-from app.core.s3_client import get_s3_client
-
 from .models import Block, Chat, Message
 from .utils import (
     calculate_chat_stats,
@@ -26,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 def run_data_processing(
-    run_id: str, raw_json_path: str, overrides: Dict[str, Any]
+    run_id: str, raw_json_path: str, s3_client: boto3.client, s3_bucket_name: str, overrides: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
     End‑to‑end preprocessing worker.
@@ -35,6 +34,8 @@ def run_data_processing(
     ----------
     run_id      : uuid string
     raw_json_path: temp path to the raw JSON file containing chat data
+    s3_client    : boto3 S3 client
+    s3_bucket_name: S3 bucket name
     overrides    : dict with overrides for the configuration
     Returns a dict of summary statistics at the end, e.g.
     {
@@ -93,8 +94,6 @@ def run_data_processing(
         f"LoRA: {override_counts['lora']}, Model: {override_counts['model']}, "
         f"Training: {override_counts['training']}, Skipped: {override_counts['skipped']}"
     )
-
-    s3_client: boto3.client | None = get_s3_client()
 
     # --------------------------------------------------------------------
     # 1) Load raw chats from temp file, then delete the file when done
@@ -575,6 +574,43 @@ def run_data_processing(
         {f"stats_{k}": str(v) for k, v in chat_stats.items()}
     )  # add stats to metadata
 
+    fine_tuning_metadata = {
+        # Model settings
+        "model_name": cfg.fine_tuning.model.name,
+        "max_seq_length": str(cfg.fine_tuning.model.max_seq_length),
+        "load_in_4bit": str(cfg.fine_tuning.model.load_in_4bit),
+        "chat_template": cfg.fine_tuning.model.chat_template,
+        # Dataset settings
+        "dataset_split": cfg.fine_tuning.dataset.split,
+        "dataset_num_proc": str(cfg.fine_tuning.dataset.num_proc),
+        # LoRA settings
+        "lora_r": str(cfg.fine_tuning.lora.r),
+        "lora_alpha": str(cfg.fine_tuning.lora.alpha),
+        "lora_dropout": str(cfg.fine_tuning.lora.dropout),
+        "lora_bias": cfg.fine_tuning.lora.bias,
+        "use_gradient_checkpointing": str(
+            cfg.fine_tuning.lora.use_gradient_checkpointing
+        ),
+        "random_state": str(cfg.fine_tuning.lora.random_state),
+        "use_rslora": str(cfg.fine_tuning.lora.use_rslora),
+        "target_modules": str(cfg.fine_tuning.lora.target_modules),
+        # Training settings
+        "batch_size": str(cfg.fine_tuning.training.per_device_train_batch_size),
+        "gradient_accumulation_steps": str(
+            cfg.fine_tuning.training.gradient_accumulation_steps
+        ),
+        "warmup_steps": str(cfg.fine_tuning.training.warmup_steps),
+        "max_steps": str(cfg.fine_tuning.training.max_steps),
+        "learning_rate": str(cfg.fine_tuning.training.learning_rate),
+        "weight_decay": str(cfg.fine_tuning.training.weight_decay),
+        "lr_scheduler_type": cfg.fine_tuning.training.lr_scheduler_type,
+        "seed": str(cfg.fine_tuning.training.seed),
+        "packing": str(cfg.fine_tuning.training.packing),
+    }
+
+    # Update the metadata_dict with fine-tuning metadata
+    metadata_dict.update({f"ft_{k}": v for k, v in fine_tuning_metadata.items()})
+
     # 8.1) Prepare chat records
     logger.info("Preparing processed chat records...")
     chat_records = []
@@ -641,43 +677,6 @@ def run_data_processing(
         logger.info(f"Saving training blocks locally to {training_blocks_filepath}...")
         with training_blocks_filepath.open("w", encoding="utf-8") as f:
             f.write("\n".join(training_block_lines))
-
-    fine_tuning_metadata = {
-        # Model settings
-        "model_name": cfg.fine_tuning.model.name,
-        "max_seq_length": str(cfg.fine_tuning.model.max_seq_length),
-        "load_in_4bit": str(cfg.fine_tuning.model.load_in_4bit),
-        "chat_template": cfg.fine_tuning.model.chat_template,
-        # Dataset settings
-        "dataset_split": cfg.fine_tuning.dataset.split,
-        "dataset_num_proc": str(cfg.fine_tuning.dataset.num_proc),
-        # LoRA settings
-        "lora_r": str(cfg.fine_tuning.lora.r),
-        "lora_alpha": str(cfg.fine_tuning.lora.alpha),
-        "lora_dropout": str(cfg.fine_tuning.lora.dropout),
-        "lora_bias": cfg.fine_tuning.lora.bias,
-        "use_gradient_checkpointing": str(
-            cfg.fine_tuning.lora.use_gradient_checkpointing
-        ),
-        "random_state": str(cfg.fine_tuning.lora.random_state),
-        "use_rslora": str(cfg.fine_tuning.lora.use_rslora),
-        "target_modules": str(cfg.fine_tuning.lora.target_modules),
-        # Training settings
-        "batch_size": str(cfg.fine_tuning.training.per_device_train_batch_size),
-        "gradient_accumulation_steps": str(
-            cfg.fine_tuning.training.gradient_accumulation_steps
-        ),
-        "warmup_steps": str(cfg.fine_tuning.training.warmup_steps),
-        "max_steps": str(cfg.fine_tuning.training.max_steps),
-        "learning_rate": str(cfg.fine_tuning.training.learning_rate),
-        "weight_decay": str(cfg.fine_tuning.training.weight_decay),
-        "lr_scheduler_type": cfg.fine_tuning.training.lr_scheduler_type,
-        "seed": str(cfg.fine_tuning.training.seed),
-        "packing": str(cfg.fine_tuning.training.packing),
-    }
-
-    # Update the metadata_dict with fine-tuning metadata
-    metadata_dict.update({f"ft_{k}": v for k, v in fine_tuning_metadata.items()})
 
     # 8.5) Upload training blocks to S3
     if s3_client is not None:

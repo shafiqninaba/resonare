@@ -6,13 +6,13 @@ from logging import getLogger
 import boto3
 from botocore.exceptions import ClientError
 
-from app.core.config import get_settings
+from app.core.config import settings
 
 logger = getLogger(__name__)
 
 
 @lru_cache()
-def get_s3_client():
+def get_s3_client() -> boto3.client:
     """
     Returns a cached boto3 S3 client configured with credentials from Settings.
     If you later switch to aioboto3/aiobotocore for true async, just replace this function.
@@ -20,26 +20,26 @@ def get_s3_client():
     Returns:
         boto3.client: Boto3 S3 client object.
     """
-    s = get_settings()
+    
     # Check if the required environment variables are set
-    if not all([s.AWS_ACCESS_KEY_ID, s.AWS_SECRET_ACCESS_KEY, s.AWS_REGION]):
+    if not all([settings.AWS_ACCESS_KEY_ID, settings.AWS_SECRET_ACCESS_KEY, settings.AWS_REGION]):
         raise ValueError(
             "AWS credentials and region must be set in the environment variables."
         )
 
     try:
         # Check if the S3 bucket exists
-        s3 = boto3.client(
+        s3_client = boto3.client(
             "s3",
-            aws_access_key_id=s.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=s.AWS_SECRET_ACCESS_KEY,
-            region_name=s.AWS_REGION,
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            region_name=settings.AWS_REGION,
         )
-        s3.head_bucket(Bucket=s.AWS_S3_BUCKET)
+        s3_client.head_bucket(Bucket=settings.AWS_S3_BUCKET)
     except ClientError as e:
         raise RuntimeError(f"Failed to connect to S3: {e}")
 
-    return s3
+    return s3_client
 
 
 # Helper function to upload directory content to S3

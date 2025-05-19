@@ -25,4 +25,4 @@ ADD . /app
 
 RUN uv sync --frozen --no-dev --no-cache
 
-CMD ["fastapi", "run", "app/main.py"]
+CMD ["fastapi", "run", "src/app/main.py"]

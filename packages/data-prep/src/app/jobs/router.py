@@ -1,14 +1,15 @@
-# app/modules/jobs/router.py
+# app/jobs/router.py
 from typing import Any, Dict, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.modules.jobs.schemas import (
+from .schemas import (
     DataPrepRequest,
     DataPrepRequestResponse,
     JobInfo,
 )
-from app.modules.jobs.services import JobService, get_job_service
+from ..dependencies import get_job_service_dep
+from app.jobs.services import JobService
 
 router = APIRouter(tags=["jobs"], prefix="/jobs")
 
@@ -20,9 +21,9 @@ router = APIRouter(tags=["jobs"], prefix="/jobs")
 )
 async def submit_job(
     req: DataPrepRequest,
-    service: JobService = Depends(get_job_service),
+    job_service: JobService = Depends(get_job_service_dep), # Correct type hint and DI
 ) -> DataPrepRequestResponse:
-    return await service.create_job(req)
+    return await job_service.create_job(req)
 
 
 @router.get(
@@ -35,10 +36,10 @@ async def get_jobs(
         description="If provided, fetch only this job by ID",
         regex="^[0-9a-f]{32}$",
     ),
-    service: JobService = Depends(get_job_service),
+    job_service: JobService = Depends(get_job_service_dep),
 ) -> Union[Dict[str, JobInfo], JobInfo]:
     if run_id:
-        info = service.get_status(run_id)
+        info = job_service.get_status(run_id)
         if not info:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -46,7 +47,7 @@ async def get_jobs(
             )
         return info
 
-    return service.statuses
+    return job_service.statuses
 
 
 @router.get(
@@ -55,10 +56,10 @@ async def get_jobs(
     summary="Inspect queue and running flag",
 )
 async def get_queue_status(
-    service: JobService = Depends(get_job_service),
+    job_service: JobService = Depends(get_job_service_dep),
 ) -> Dict[str, Any]:
     return {
-        "running": service.job_running,
-        "queue_size": service.queue.qsize(),
-        "jobs": service.statuses,
+        "running": job_service.job_running,
+        "queue_size": job_service.queue.qsize(),
+        "jobs": job_service.statuses,
     }
