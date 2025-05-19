@@ -48,9 +48,6 @@ from typing import List, Optional
 
 import boto3
 import hydra
-from omegaconf import DictConfig
-from pydantic import ValidationError
-
 from app.models.telegram import Block, Chat, Message
 from app.src.utils.data_prep import (
     calculate_chat_stats,
@@ -58,6 +55,8 @@ from app.src.utils.data_prep import (
     parse_date_limit,
 )
 from app.src.utils.general import setup_standard_logging
+from omegaconf import DictConfig
+from pydantic import ValidationError
 
 
 @hydra.main(config_path="conf", config_name="config")

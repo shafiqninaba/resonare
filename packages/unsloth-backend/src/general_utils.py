@@ -1,14 +1,15 @@
 import logging
 import logging.config
 import os
+import traceback
 
 import boto3
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 from omegaconf import OmegaConf
-import traceback
 
 load_dotenv()
+
 
 def setup_logger(name: str) -> logging.Logger:
     """

@@ -6,17 +6,25 @@ from pydantic import BaseModel, Field
 
 
 class DataPrepRequest(BaseModel):
-    """Standard request for preprocessing a list of chat messages.
+    """Standard request for preprocessing a list of chat messages and configuring fine-tuning.
 
     Attributes:
         chats (List[Dict[str, Any]]): List of chat dictionaries to be preprocessed.
         target_name (Optional[str]): Name under which to store the processed chat.
         system_prompt (Optional[str]): System message to prepend to every block.
         date_limit (Optional[str]): ISO date string; ignore messages after this date.
-        convo_block_thereshold_secs (int): Max gap in seconds before starting a new block.
+        convo_block_threshold_secs (int): Max gap in seconds before starting a new block.
         min_tokens_per_block (int): Minimum tokens per block.
         max_tokens_per_block (int): Maximum tokens per block.
         message_delimiter (str): Prefix for merged lines.
+        name (Optional[str]): Model ID for fine-tuning.
+        chat_template (Optional[str]): Template format for chat messages.
+        r (Optional[int]): LoRA rank parameter.
+        alpha (Optional[int]): LoRA alpha parameter.
+        per_device_train_batch_size (Optional[int]): Batch size for training.
+        gradient_accumulation_steps (Optional[int]): Gradient accumulation steps.
+        warmup_steps (Optional[int]): Number of warmup steps.
+        max_steps (Optional[int]): Maximum number of training steps.
     """
 
     # required payload
@@ -34,14 +42,23 @@ class DataPrepRequest(BaseModel):
     date_limit: Optional[str] = Field(
         None, description="ISO date string; ignore messages after this date"
     )
-    convo_block_thereshold_secs: int = Field(
+    convo_block_threshold_secs: int = Field(
         3600,
         description="Max gap in seconds before starting a new block",
     )
     min_tokens_per_block: int = Field(300, description="Minimum tokens per block")
     max_tokens_per_block: int = Field(800, description="Maximum tokens per block")
     message_delimiter: str = Field(">>>", description="Prefix for merged lines")
-
+    
+    # fine-tuning parameters
+    name: Optional[str] = Field(None, description="Model ID for fine-tuning")
+    chat_template: Optional[str] = Field(None, description="Template format for chat messages")
+    r: Optional[int] = Field(None, description="LoRA rank parameter")
+    alpha: Optional[int] = Field(None, description="LoRA alpha parameter")
+    per_device_train_batch_size: Optional[int] = Field(None, description="Batch size for training")
+    gradient_accumulation_steps: Optional[int] = Field(None, description="Gradient accumulation steps")
+    warmup_steps: Optional[int] = Field(None, description="Number of warmup steps")
+    max_steps: Optional[int] = Field(None, description="Maximum number of training steps")
 
 class DataPrepRequestResponse(BaseModel):
     """Standard response returned after submitting a preprocessing job.

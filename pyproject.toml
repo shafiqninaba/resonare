@@ -1,6 +1,5 @@
 [project]
 dependencies = [
-  "fine-tuning",
   "data-prep",
   "ipykernel>=6.29.5",
   "loguru>=0.7.3",
@@ -18,8 +17,7 @@ fine-tuning = {workspace = true}
 
 [tool.uv.workspace]
 members = [
-  "packages/fine-tuning",
   "packages/data-prep",
-  "packages/inference",
+  "packages/unsloth-backend",
   "packages/frontend"
 ]

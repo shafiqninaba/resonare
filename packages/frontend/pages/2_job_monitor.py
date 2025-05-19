@@ -7,7 +7,6 @@ import pandas as pd
 import requests
 import streamlit as st
 
-
 DATA_PREP_URL = os.getenv("DATA_PREP_URL", "http://data-prep:8000")
 FINE_TUNE_URL = os.getenv("FINE_TUNING_SERVICE_URL", "http://fine-tuning:8000")
 
@@ -56,26 +55,30 @@ def main() -> None:
     rows: List[Dict[str, Any]] = []
     for rid, info in raw_dp.items():
         if rid in run_ids:
-            rows.append({
-                "run_id": rid,
-                "type": "data-prep",
-                "status": info.get("status", "unknown"),
-                "created_at": info.get("created_at", ""),
-                "started_at": info.get("started_at", ""),
-                "completed_at": info.get("completed_at", ""),
-                "error": info.get("error", ""),
-            })
+            rows.append(
+                {
+                    "run_id": rid,
+                    "type": "data-prep",
+                    "status": info.get("status", "unknown"),
+                    "created_at": info.get("created_at", ""),
+                    "started_at": info.get("started_at", ""),
+                    "completed_at": info.get("completed_at", ""),
+                    "error": info.get("error", ""),
+                }
+            )
     for rid, info in raw_ft.items():
         if rid in run_ids:
-            rows.append({
-                "run_id": rid,
-                "type": "fine-tuning",
-                "status": info.get("status", "unknown"),
-                "created_at": info.get("created_at", ""),
-                "started_at": info.get("started_at", ""),
-                "completed_at": info.get("completed_at", ""),
-                "error": info.get("error", ""),
-            })
+            rows.append(
+                {
+                    "run_id": rid,
+                    "type": "fine-tuning",
+                    "status": info.get("status", "unknown"),
+                    "created_at": info.get("created_at", ""),
+                    "started_at": info.get("started_at", ""),
+                    "completed_at": info.get("completed_at", ""),
+                    "error": info.get("error", ""),
+                }
+            )
     df = pd.DataFrame(rows)
 
     # Filters
@@ -83,7 +86,9 @@ def main() -> None:
     col1, col2, col3 = st.columns(3)
     with col1:
         status_filter = st.multiselect(
-            "Status", options=["queued", "running", "completed", "failed"], key="status_filter"
+            "Status",
+            options=["queued", "running", "completed", "failed"],
+            key="status_filter",
         )
     with col2:
         type_filter = st.multiselect(
@@ -104,7 +109,9 @@ def main() -> None:
     if df.empty:
         st.info("No matching jobs.")
     else:
-        st.dataframe(df.sort_values("created_at", ascending=False), use_container_width=True)
+        st.dataframe(
+            df.sort_values("created_at", ascending=False), use_container_width=True
+        )
 
     # Queue positions
     st.markdown("### Queued Jobs")
@@ -121,11 +128,13 @@ def main() -> None:
         for rid, job in dp_q.items():
             # Only show queued (not running)
             if rid in run_ids and job.get("status") == "queued":
-                dp_rows.append({
-                    "Run ID": rid,
-                    "Position": job.get("position_in_queue", 0),
-                    "Created At": raw_dp.get(rid, {}).get("created_at", ""),
-                })
+                dp_rows.append(
+                    {
+                        "Run ID": rid,
+                        "Position": job.get("position_in_queue", 0),
+                        "Created At": raw_dp.get(rid, {}).get("created_at", ""),
+                    }
+                )
         if not dp_rows:
             st.info("No data-prep jobs queued.")
         else:
@@ -137,11 +146,13 @@ def main() -> None:
         ft_rows = []
         for rid, job in ft_q.items():
             if rid in run_ids and job.get("status") == "queued":
-                ft_rows.append({
-                    "Run ID": rid,
-                    "Position": job.get("position_in_queue", 0),
-                    "Created At": raw_ft.get(rid, {}).get("created_at", ""),
-                })
+                ft_rows.append(
+                    {
+                        "Run ID": rid,
+                        "Position": job.get("position_in_queue", 0),
+                        "Created At": raw_ft.get(rid, {}).get("created_at", ""),
+                    }
+                )
         if not ft_rows:
             st.info("No fine-tuning jobs queued.")
         else:

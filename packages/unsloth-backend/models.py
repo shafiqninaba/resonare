@@ -36,4 +36,6 @@ class TrainingResponse(BaseModel):
 class InferenceRequest(BaseModel):
     run_id: str
     # Expect a list of message dictionaries instead of a single prompt
-    messages: List[Dict[str, str]]  # e.g., [{"role": "user", "content": "..."}, {"role": "assistant", ...}]
+    messages: List[
+        Dict[str, str]
+    ]  # e.g., [{"role": "user", "content": "..."}, {"role": "assistant", ...}]

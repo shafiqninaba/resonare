@@ -6,16 +6,15 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 
 import torch
+from app.models import JobInfo, JobStatus
 from fastapi import FastAPI, HTTPException
-
+from src.fine_tune import run_fine_tuning
 from src.general_utils import (
     downloadDirectoryFroms3,
     list_directories_in_bucket,
     setup_logger,
-    setup_s3_client
+    setup_s3_client,
 )
-from src.fine_tune import run_fine_tuning
-from app.models import JobStatus, JobInfo
 from unsloth import FastLanguageModel, FastModel
 
 # Set up logger
@@ -190,16 +189,15 @@ async def load_or_get_model(run_id: str):
                     load_in_4bit=LOAD_IN_4BIT,
                 )
                 FastLanguageModel.for_inference(model)  # Prepare for inference
-                
-                # Gemma Changes
-            #     model, tokenizer = FastModel.from_pretrained(
-            #     model_name = temp_dir,
-            #     max_seq_length=MAX_SEQ_LENGTH,
-            #     dtype=DTYPE,
-            #     load_in_4bit=LOAD_IN_4BIT,
-            # )
-            #     FastModel.for_inference(model)  # Prepare for inference
 
+                # Gemma Changes
+                #     model, tokenizer = FastModel.from_pretrained(
+                #     model_name = temp_dir,
+                #     max_seq_length=MAX_SEQ_LENGTH,
+                #     dtype=DTYPE,
+                #     load_in_4bit=LOAD_IN_4BIT,
+                # )
+                #     FastModel.for_inference(model)  # Prepare for inference
 
                 logger.info(
                     f"Model and tokenizer for run_id {run_id} loaded successfully."

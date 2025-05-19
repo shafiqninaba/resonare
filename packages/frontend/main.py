@@ -7,7 +7,6 @@ from typing import Any, Dict, List, Optional
 
 import requests
 import streamlit as st
-
 from src.utils import display_chat_summary, parse_json_chats, poll_job
 
 # Service URLs
@@ -23,6 +22,14 @@ def submit_data_prep_job(
     convo_secs: Optional[int] = None,
     min_tokens: Optional[int] = None,
     max_tokens: Optional[int] = None,
+    model_id: Optional[str] = None,
+    chat_template: Optional[str] = None,
+    lora_r: Optional[int] = None,
+    lora_alpha: Optional[int] = None,
+    batch_size: Optional[int] = None,
+    grad_accum: Optional[int] = None,
+    warmup_steps: Optional[int] = None,
+    max_steps: Optional[int] = None,
     base_url: str = DATA_PREP_URL,
 ) -> Optional[str]:
     """
@@ -33,6 +40,8 @@ def submit_data_prep_job(
     Returns the run_id on success, or None on error.
     """
     payload: Dict[str, Any] = {"chats": chats, "target_name": target_name}
+
+    # data-prep options
     if system_prompt:
         payload["system_prompt"] = system_prompt
     if date_limit:
@@ -44,6 +53,24 @@ def submit_data_prep_job(
     if max_tokens is not None:
         payload["max_tokens_per_block"] = max_tokens
 
+    # fine-tuning options
+    if model_id:
+        payload["name"] = model_id
+    if chat_template:
+        payload["chat_template"] = chat_template
+    if lora_r is not None:
+        payload["r"] = lora_r
+    if lora_alpha is not None:
+        payload["alpha"] = lora_alpha
+    if batch_size is not None:
+        payload["per_device_train_batch_size"] = batch_size
+    if grad_accum is not None:
+        payload["gradient_accumulation_steps"] = grad_accum
+    if warmup_steps is not None:
+        payload["warmup_steps"] = warmup_steps
+    if max_steps is not None:
+        payload["max_steps"] = max_steps
+
     try:
         resp = requests.post(f"{base_url}/jobs/submit", json=payload, timeout=60)
         resp.raise_for_status()
@@ -51,6 +78,7 @@ def submit_data_prep_job(
     except requests.RequestException as exc:
         st.error(f"Data-prep submission failed: {exc}")
         return None
+
 
 def submit_fine_tune_job(
     run_id: str,
@@ -137,7 +165,7 @@ def main() -> None:
         4. Same settings as above  
         5. Repeat per chat
         """
-    )
+        )
 
     st.markdown(
         """ 
@@ -181,14 +209,16 @@ def main() -> None:
         col1, col2 = st.columns(2)
         with col1:
             system_prompt = st.text_area(
-                "System Prompt (optional)", height=100, help="Define the personality or tone for your twin.",
+                "System Prompt (optional)",
+                height=100,
+                help="Define the personality or tone for your twin.",
             )
             date_limit_date = st.date_input(
-                "Start Date (optional)", value=None, help="Include messages from this date onward.",
+                "Start Date (optional)",
+                value=None,
+                help="Include messages from this date onward.",
             )
-            date_limit = (
-                date_limit_date.isoformat() if date_limit_date else None
-            )
+            date_limit = date_limit_date.isoformat() if date_limit_date else None
             convo_secs = st.number_input(
                 "Block Time Threshold (secs)",
                 min_value=0,
@@ -196,42 +226,67 @@ def main() -> None:
                 help="Split conversations if messages are farther apart than this.",
             )
             min_tokens = st.number_input(
-                "Min Tokens per Block", min_value=0, value=None, help="Minimum tokens in a conversation block.",
+                "Min Tokens per Block",
+                min_value=0,
+                value=None,
+                help="Minimum tokens in a conversation block.",
             )
             max_tokens = st.number_input(
-                "Max Tokens per Block", min_value=0, value=None, help="Maximum tokens in a conversation block.",
+                "Max Tokens per Block",
+                min_value=0,
+                value=None,
+                help="Maximum tokens in a conversation block.",
             )
         with col2:
             model_map = {
                 "unsloth/llama-3-8b-Instruct-bnb-4bit": "llama-3",
                 "unsloth/Meta-Llama-3.1-8B-Instruct-unsloth-bnb-4bit": "llama-3.1",
                 "unsloth/Llama-3.2-1B-Instruct-bnb-4bit": "llama-3.2",
-                "unsloth/Llama-3.2-3B-Instruct-bnb-4bit": "llama-3.2",
                 "unsloth/gemma-3-4b-it-unsloth-bnb-4bit": "gemma-3",
             }
             model_id = st.selectbox(
-                "Base Model", options=list(model_map.keys()),
-                format_func=lambda k: model_map[k], help="Choose a base checkpoint for fine-tuning.",
+                "Base Model",
+                options=list(model_map.keys()),
+                format_func=lambda k: model_map[k],
+                help="Choose a base checkpoint for fine-tuning.",
             )
             chat_template = model_map[model_id]
 
             lora_r = st.number_input(
-                "LoRA Rank (r)", min_value=1, value=None, help="Low-rank matrix dimension (capacity vs speed).",
+                "LoRA Rank (r)",
+                min_value=1,
+                value=None,
+                help="Low-rank matrix dimension (capacity vs speed).",
             )
             lora_alpha = st.number_input(
-                "LoRA Alpha", min_value=1, value=None, help="Scaling factor; typically equals r.",
+                "LoRA Alpha",
+                min_value=1,
+                value=None,
+                help="Scaling factor; typically equals r.",
             )
             batch_size = st.number_input(
-                "Batch Size", min_value=1, value=None,  help="Examples per GPU batch.",
+                "Batch Size",
+                min_value=1,
+                value=None,
+                help="Examples per GPU batch.",
             )
             grad_accum = st.number_input(
-                "Gradient Accumulation Steps", min_value=1, value=None,  help="Simulate a larger effective batch size.",
+                "Gradient Accumulation Steps",
+                min_value=1,
+                value=None,
+                help="Simulate a larger effective batch size.",
             )
             warmup_steps = st.number_input(
-                "Warmup Steps", min_value=0, value=None, help="LR scheduler warmup period."
+                "Warmup Steps",
+                min_value=0,
+                value=None,
+                help="LR scheduler warmup period.",
             )
             max_steps = st.number_input(
-                "Max Training Steps", min_value=1, value=None, help="Total training steps."
+                "Max Training Steps",
+                min_value=1,
+                value=None,
+                help="Total training steps.",
             )
 
     # --- Submission ---
@@ -250,9 +305,20 @@ def main() -> None:
                 convo_secs=convo_secs,
                 min_tokens=min_tokens,
                 max_tokens=max_tokens,
+                model_id=model_id,
+                chat_template=chat_template,
+                lora_r=lora_r,
+                lora_alpha=lora_alpha,
+                batch_size=batch_size,
+                grad_accum=grad_accum,
+                warmup_steps=warmup_steps,
+                max_steps=max_steps,
+
             )
             if run_id:
-                st.success(f"Job sucessfully queued. Your run id is {run_id}, please save it. This will be used to fetch your model later.")
+                st.success(
+                    f"Job sucessfully queued. Your run id is {run_id}, please save it. This will be used to fetch your model later."
+                )
                 st.session_state.run_ids.append(run_id)
 
     # --- Current Job Status ---
@@ -285,10 +351,10 @@ def main() -> None:
         if ft.get("status") == "completed":
             st.success("Fine-tuning completed!")
             st.page_link(
-            "pages/1_inference.py",
-            label="Click here to start chatting with your trained model",
-            use_container_width=True
-        )
+                "pages/1_inference.py",
+                label="Click here to start chatting with your trained model",
+                use_container_width=True,
+            )
         else:
             st.error(f"Fine-tuning failed: {ft.get('error')}")
 

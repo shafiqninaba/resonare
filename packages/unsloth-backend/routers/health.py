@@ -1,8 +1,8 @@
-import torch
-from fastapi import APIRouter, HTTPException
 from typing import Dict
 
+import torch
 from app.dependencies import resources
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter(tags=["system"])
 
@@ -18,7 +18,9 @@ async def get_health_status() -> Dict[str, str]:
         s3_status = "connected" if "s3_client" in resources else "disconnected"
         gpu_status = "available" if torch.cuda.is_available() else "unavailable"
         gpu_info = (
-            f"{torch.cuda.device_count()} device(s)" if torch.cuda.is_available() else "none"
+            f"{torch.cuda.device_count()} device(s)"
+            if torch.cuda.is_available()
+            else "none"
         )
 
         if s3_status == "disconnected":
