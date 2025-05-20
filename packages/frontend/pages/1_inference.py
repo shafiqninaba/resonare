@@ -98,14 +98,14 @@ if prompt := st.chat_input("What is up?"):
             api_url = urljoin(INFERENCE_URL, "/infer")
             # Send the entire message history in the payload
             payload = {
-                "run_id": st.session_state.run_id,
+                "run_id": st.session_state.run_id.strip(),
                 "messages": st.session_state.messages,
                 "temperature": temperature,  # Add temperature to payload
             }
 
             # Set spinner text based on whether it's the first message
             spinner_text = (
-                "Downloading model..."
+                "Loading Model..."
                 if is_first_message
                 else "Waiting for model response..."
             )
@@ -113,7 +113,7 @@ if prompt := st.chat_input("What is up?"):
             # Add a spinner while waiting for the backend
             with st.spinner(spinner_text):
                 response = requests.post(
-                    api_url, json=payload, timeout=120
+                    api_url, json=payload, timeout=150,
                 )  # Added timeout
                 response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
                 api_response = response.json()
