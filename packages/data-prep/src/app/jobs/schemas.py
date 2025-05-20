@@ -54,7 +54,6 @@ class DataPrepRequest(BaseModel):
     max_tokens_per_block: int = Field(800, description="Maximum tokens per block")
     message_delimiter: str = Field(">>>", description="Prefix for merged lines")
 
-
     # --------------------------------------------------------------------
     # Fine-tuning settings
     # --------------------------------------------------------------------
@@ -110,6 +109,7 @@ class JobInfo(BaseModel):
         started_at (Optional[datetime]): Timestamp when processing started.
         completed_at (Optional[datetime]): Timestamp when processing completed or failed.
         error (Optional[str]): Error message if the job failed.
+        stats (Optional[Dict[str, Any]]): Additional statistics or metadata about the chat statistics.
     """
 
     run_id: str

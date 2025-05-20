@@ -1,71 +1,36 @@
 import os
 import tempfile
-import ast
-from typing import Dict
 
-import hydra
+import boto3
 import torch
 from datasets import load_dataset
 from dotenv import load_dotenv
-from src.general_utils import setup_logger, upload_directory_to_s3
 from transformers import DataCollatorForSeq2Seq, TrainingArguments
+from trl import SFTTrainer
 from unsloth import FastLanguageModel, FastModel, is_bfloat16_supported
 from unsloth.chat_templates import (
     get_chat_template,
     standardize_sharegpt,
     train_on_responses_only,
 )
-from trl import SFTTrainer
+
+from ..core.s3_client import upload_directory_to_s3
+from .utils import parse_metadata, setup_logger
 
 load_dotenv()
 
 logger = setup_logger("fine_tuning")
 
 
-def parse_metadata(headers):
-    """Parse S3 metadata headers and convert to appropriate types"""
-    cfg = {}
-    for key, value in headers.items():
-        if key.startswith("x-amz-meta-"):
-            clean_key = key
-
-            # Handle booleans
-            if value.lower() in ("true", "false"):
-                cfg[clean_key] = value.lower() == "true"
-
-            # Handle integers
-            elif value.isdigit() or (value.startswith("-") and value[1:].isdigit()):
-                cfg[clean_key] = int(value)
-
-            # Handle floats
-            elif value.replace(".", "", 1).isdigit() or (
-                value.startswith("-") and value[1:].replace(".", "", 1).isdigit()
-            ):
-                cfg[clean_key] = float(value)
-
-            # Handle lists
-            elif value.startswith("[") and value.endswith("]"):
-                try:
-                    cfg[clean_key] = ast.literal_eval(value)
-                except (SyntaxError, ValueError):
-                    # Fallback to string if parsing fails
-                    cfg[clean_key] = value
-
-            # Keep as string for other values
-            else:
-                cfg[clean_key] = value
-
-    return cfg
-
-
-def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
+def run_fine_tuning(run_id: str, s3_client: boto3.client, bucket_name: str) -> None:
     """Background task to run the fine-tuning process"""
     try:
+        logger.info(f"Starting fine-tuning for run_id: {run_id}")
+
+        # Now, we load the configuration from the metadata in train.jsonl rather than hydra config
         # # Load configuration
         # with hydra.initialize(config_path="../conf"):
         #     cfg = hydra.compose(config_name="config")
-
-        logger.info(f"Starting fine-tuning for run_id: {run_id}")
 
         # # Get configurations from hydra config
         # model_config = cfg.model
@@ -76,10 +41,11 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
 
         # Create a temporary directory for the entire process
         with tempfile.TemporaryDirectory() as temp_dir:
-            ### DOWNLOAD DATASET FROM S3 FIRST ###
+            # --------------------------------------------------------------------
+            # Download the dataset from S3 and getting training parameters from metadata
+            # --------------------------------------------------------------------
             logger.info(f"Loading and processing dataset from S3 for run_id: {run_id}")
-            s3 = resources["s3_client"]
-            AWS_S3_BUCKET = resources["s3_bucket"]
+            AWS_S3_BUCKET = bucket_name
 
             # Define the object key (path in S3)
             object_key = f"{run_id}/data/train.jsonl"
@@ -90,8 +56,10 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
 
             try:
                 # Download the file
-                s3.download_file(AWS_S3_BUCKET, object_key, local_file_path)
-                cfg_finetuning = s3.head_object(Bucket=AWS_S3_BUCKET, Key=object_key)
+                s3_client.download_file(AWS_S3_BUCKET, object_key, local_file_path)
+                cfg_finetuning = s3_client.head_object(
+                    Bucket=AWS_S3_BUCKET, Key=object_key
+                )
                 logger.info(
                     f"Successfully downloaded {object_key} to {local_file_path}"
                 )
@@ -114,15 +82,22 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 logger.error(f"Error downloading or loading dataset: {e}")
                 raise
 
+            # --------------------------------------------------------------------
+            # Loading the model
+            # --------------------------------------------------------------------
             # Now that we've loaded the dataset, load the model and tokenizer
             logger.info(f"Loading model: {cfg['x-amz-meta-ft_model_name']}")
 
-            # Gemma Changes
-            if "gemma" in cfg["x-amz-meta-ft_model_name"]:
+            # Gemma 3 is a vision model, so we need to use FastModel to load it
+            if "gemma-3" in cfg["x-amz-meta-ft_model_name"]:
                 model, tokenizer = FastModel.from_pretrained(
-                    model_name="unsloth/gemma-3-4b-it",
-                    max_seq_length=2048,  # Choose any for long context!
-                    load_in_4bit=True,  # 4 bit quantization to reduce memory
+                    model_name=cfg["x-amz-meta-ft_model_name"],
+                    max_seq_length=cfg[
+                        "x-amz-meta-ft_max_seq_length"
+                    ],  # Choose any for long context!
+                    load_in_4bit=cfg[
+                        "x-amz-meta-ft_load_in_4bit"
+                    ],  # 4 bit quantization to reduce memory
                     load_in_8bit=False,  # [NEW!] A bit more accurate, uses 2x memory
                     full_finetuning=False,  # [NEW!] We have full finetuning now!
                     # token = "hf_...", # use one if using gated models
@@ -136,11 +111,13 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 )
             logger.info(f"Model: {cfg['x-amz-meta-ft_model_name']} loaded successfully")
 
+            # --------------------------------------------------------------------
             # Add LoRA adapters to the model
+            # --------------------------------------------------------------------
             logger.info("Adding LoRA adapters to the model")
 
-            # Gemma Changes
-            if "gemma" in cfg["x-amz-meta-ft_model_name"]:
+            # Gemma 3 is a vision model, so we need to use FastModel to load it
+            if "gemma-3" in cfg["x-amz-meta-ft_model_name"]:
                 model = FastModel.get_peft_model(
                     model,
                     finetune_vision_layers=False,  # Turn off for just text!
@@ -174,7 +151,9 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 )
             logger.info("LoRA adapters added successfully")
 
-            # Now process the dataset with the tokenizer
+            # --------------------------------------------------------------------
+            # Tokenize the dataset and prepare it for training
+            # --------------------------------------------------------------------
             logger.info("Processing dataset with tokenizer")
             tokenizer = get_chat_template(
                 tokenizer,
@@ -200,6 +179,9 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
             )
             logger.info(f"Dataset processed. Size: {len(dataset)} samples")
 
+            # --------------------------------------------------------------------
+            # Initialize the trainer
+            # --------------------------------------------------------------------
             logger.info("Initializing trainer")
             trainer = SFTTrainer(
                 model=model,
@@ -231,6 +213,9 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 ),
             )
 
+            # --------------------------------------------------------------------
+            # Configure trainer for training on responses only based on the chat template
+            # --------------------------------------------------------------------
             if "chatml" in cfg["x-amz-meta-ft_chat_template"]:
                 trainer = train_on_responses_only(
                     trainer,
@@ -270,13 +255,13 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 )
             else:
                 logger.warning(
-                    f"Chat template {cfg['x-amz-meta-ft_chat_template']} not recognized. No training on responses only."
+                    f"Chat template {cfg['x-amz-meta-ft_chat_template']} not recognized. Defaulting to standard training (no train on responses only applied)."
                 )
                 pass
 
-            logger.info("Starting training...")
-
+            # --------------------------------------------------------------------
             # Show current memory stats
+            # --------------------------------------------------------------------
             gpu_stats = torch.cuda.get_device_properties(0)
             start_gpu_memory = round(
                 torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3
@@ -285,10 +270,15 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
             logger.debug(f"GPU = {gpu_stats.name}. Max memory = {max_memory} GB.")
             logger.debug(f"{start_gpu_memory} GB of memory reserved.")
 
-            # Training the model
+            # --------------------------------------------------------------------
+            # TRAINING
+            # --------------------------------------------------------------------
+            logger.info("Starting training...")
             trainer_stats = trainer.train()
 
+            # --------------------------------------------------------------------
             # Show final memory and time stats
+            # --------------------------------------------------------------------
             used_memory = round(
                 torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024, 3
             )
@@ -310,28 +300,36 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 f"Peak reserved memory for training % of max memory = {lora_percentage} %."
             )
 
+            # --------------------------------------------------------------------
+            # Try to upload the trained models to S3
+            # --------------------------------------------------------------------
             logger.info("Saving model artifacts to temporary directory...")
+            try:
+                lora_model_temp_path = os.path.join(
+                    temp_dir, "lora_model"
+                )  # Create paths within the temp directory for model artifacts
 
-            # Create paths within the temp directory for model artifacts
-            lora_model_temp_path = os.path.join(temp_dir, "lora_model")
+                # Saving the final model as LoRA adapters to temp directory
+                model.save_pretrained(lora_model_temp_path)
+                tokenizer.save_pretrained(lora_model_temp_path)
 
-            # Saving the final model as LoRA adapters to temp directory
-            model.save_pretrained(lora_model_temp_path)
-            tokenizer.save_pretrained(lora_model_temp_path)
+                logger.info("Model artifacts sucessfully saved in temporary directory!")
 
-            logger.info("Model artifacts saved in temporary directory")
+            except Exception as e:
+                logger.error(f"Error saving model artifacts in temp directory: {e}")
+                raise
 
             # Upload model artifacts to S3
             logger.info("Uploading model artifacts to S3...")
 
-            # Define S3 prefixes for the model artifacts
-            lora_model_s3_prefix = f"{run_id}/lora_model"
+            lora_model_s3_prefix = (
+                f"{run_id}/lora_model"  # Define S3 prefixes for the model artifacts
+            )
 
             # Upload model directory using the shared S3 client
             lora_upload_success = upload_directory_to_s3(
-                lora_model_temp_path, lora_model_s3_prefix, s3, AWS_S3_BUCKET
+                lora_model_temp_path, lora_model_s3_prefix, s3_client, AWS_S3_BUCKET
             )
-
             if lora_upload_success:
                 logger.info(
                     f"Model artifacts for run {run_id} successfully uploaded to S3"
@@ -341,11 +339,12 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                     f"Model artifacts for run {run_id} failed to upload to S3"
                 )
 
-            # Upload the models to huggingface hub
+            # --------------------------------------------------------------------
+            # Try to upload the trained models to huggingface hub
+            # --------------------------------------------------------------------
             hf_user = os.getenv("HUGGINGFACE_USERNAME")
             hf_token = os.getenv("HUGGINGFACE_TOKEN")
 
-            # 2) Bail early with actionable warnings
             if not hf_user:
                 logger.warning(
                     "HUGGINGFACE_USERNAME not set; skipping upload. "
@@ -360,15 +359,13 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 )
                 return
 
-            # 3) Build repo_id once
             model_name = cfg["x-amz-meta-ft_model_name"].split("/")[-1]
             repo_name = f"{model_name}-{run_id}"
             repo_id = f"{hf_user}/{repo_name}"
 
-            # 4) Push both model + tokenizer in one try block
             try:
                 logger.info(
-                    f"Uploading model and tokenizer to Hugging Face Hub ({repo_id})"
+                    f"Uploading model and tokenizer to Hugging Face Hub: ({repo_id})"
                 )
                 model.push_to_hub(
                     repo_id=repo_id,
@@ -383,7 +380,6 @@ def run_fine_tuning(run_id: str, resources: Dict[str, any]) -> None:
                 logger.info(
                     f"Successfully uploaded run {run_id} artifacts to Hugging Face Hub ({repo_id})"
                 )
-
             except Exception:
                 logger.exception(
                     f"Failed to upload run {run_id} artifacts to Hugging Face Hub ({repo_id})"

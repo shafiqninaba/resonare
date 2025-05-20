@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import os
 from typing import Any, Dict, List
+from urllib.parse import urljoin
 
 import pandas as pd
 import requests
 import streamlit as st
 
 DATA_PREP_URL = os.getenv("DATA_PREP_URL", "http://data-prep:8000")
-FINE_TUNE_URL = os.getenv("FINE_TUNING_SERVICE_URL", "http://fine-tuning:8000")
+FINE_TUNE_URL = os.getenv(
+    "FINE_TUNING_SERVICE_URL", "http://unsloth-backend:8000/fine-tune"
+)
 
 
 def _safe_json(url: str, timeout: int = 15) -> Dict[str, Any]:
@@ -48,8 +51,10 @@ def main() -> None:
         st.info("You have no jobs yet. Start a run on the home page.")
 
     # Fetch job statuses
-    raw_dp = _safe_json(f"{DATA_PREP_URL}/jobs")
-    raw_ft = _safe_json(f"{FINE_TUNE_URL}/jobs")
+    dp_jobs_url = urljoin(DATA_PREP_URL, "jobs")
+    ft_jobs_url = urljoin(FINE_TUNE_URL, "jobs")
+    raw_dp = _safe_json(dp_jobs_url)
+    raw_ft = _safe_json(ft_jobs_url)
 
     # Build DataFrame for filtering
     rows: List[Dict[str, Any]] = []
@@ -115,8 +120,10 @@ def main() -> None:
 
     # Queue positions
     st.markdown("### Queued Jobs")
-    raw_dp_queue = _safe_json(f"{DATA_PREP_URL}/jobs/queue")
-    raw_ft_queue = _safe_json(f"{FINE_TUNE_URL}/queue")
+    dp_queue_url = urljoin(DATA_PREP_URL, "jobs/queue")
+    ft_queue_url = urljoin(FINE_TUNE_URL, "queue")
+    raw_dp_queue = _safe_json(dp_queue_url)
+    raw_ft_queue = _safe_json(ft_queue_url)
 
     dp_q = raw_dp_queue.get("jobs", {})
     ft_q = raw_ft_queue.get("jobs", {})

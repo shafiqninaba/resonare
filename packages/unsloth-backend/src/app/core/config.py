@@ -7,10 +7,8 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
-    PROJECT_NAME: str = "Data processing API"
-    PROJECT_DESCRIPTION: str = (
-        "API for processing JSON data from Telegram chat exports."
-    )
+    PROJECT_NAME: str = "Unsloth Backend's API"
+    PROJECT_DESCRIPTION: str = "API for fine-tuning / inference using Unsloth."
 
     # AWS
     AWS_ACCESS_KEY_ID: str

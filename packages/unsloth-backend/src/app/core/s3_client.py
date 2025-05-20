@@ -1,103 +1,62 @@
-import logging
-import logging.config
+# app/core/s3_client.py
 import os
-import traceback
+from functools import lru_cache
+from logging import getLogger
 
 import boto3
 from botocore.exceptions import ClientError
-from dotenv import load_dotenv
-from omegaconf import OmegaConf
 
-load_dotenv()
+from .config import settings
+
+logger = getLogger(__name__)
 
 
-def setup_logger(name: str) -> logging.Logger:
+@lru_cache()
+def get_s3_client() -> boto3.client:
     """
-    Set up a logger for the application.
-
-    Args:
-        name (str): Name of the logger.
+    Returns a cached boto3 S3 client configured with credentials from Settings.
+    If you later switch to aioboto3/aiobotocore for true async, just replace this function.
 
     Returns:
-        logger (logging.Logger): Configured logger instance.
-    """
-    try:
-        # Load logging configuration from YAML file
-        cfg = OmegaConf.load("conf/logging.yaml")
-        logging_config = OmegaConf.to_container(cfg.logging, resolve=True)
-
-        # Initialize logging
-        logging.config.dictConfig(logging_config)
-        logger = logging.getLogger(name)
-        return logger
-    except Exception as e:
-        # Fallback to basic logging if YAML loading fails
-        logging.basicConfig(level=logging.INFO)
-        logger = logging.getLogger(name)
-        logger.error(f"Failed to load logging configuration: {e}. Using basic logging.")
-        logger.error(traceback.format_exc())
-        return logger
-
-
-logger = setup_logger(__name__)
-
-
-def setup_s3_client() -> boto3.client:
-    """
-    Set up an S3 client for uploading processed data to AWS S3.
-
-    Returns:
-        s3: Boto3 S3 client object.
+        boto3.client: Boto3 S3 client object.
     """
 
-    logger.info("Setting up S3 client for uploading processed data...")
+    # Check if the required environment variables are set
+    if not all(
+        [
+            settings.AWS_ACCESS_KEY_ID,
+            settings.AWS_SECRET_ACCESS_KEY,
+            settings.AWS_REGION,
+        ]
+    ):
+        raise ValueError(
+            "AWS credentials and region must be set in the environment variables."
+        )
 
     try:
-        # Read AWS credentials from environment variables
-        # Note: boto3 looks for AWS credentials in serveal locations. https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html
-
-        AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID")
-        AWS_SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-        AWS_REGION = os.getenv("AWS_REGION")
-        AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET")
-
-        if (
-            not AWS_ACCESS_KEY
-            or not AWS_SECRET_KEY
-            or not AWS_REGION
-            or not AWS_S3_BUCKET
-        ):
-            logger.error(
-                "Missing AWS credentials in environment variables. "
-                "Please set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, and AWS_S3_BUCKET."
-            )
-            raise EnvironmentError("Missing AWS credentials in environment variables.")
-
-        # Create S3 client
-        s3 = boto3.client(
+        # Check if the S3 bucket exists
+        s3_client = boto3.client(
             "s3",
-            aws_access_key_id=AWS_ACCESS_KEY,
-            aws_secret_access_key=AWS_SECRET_KEY,
-            region_name=AWS_REGION,
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            region_name=settings.AWS_REGION,
         )
-        logger.info("S3 client setup successful.")
-        return s3
+        s3_client.head_bucket(Bucket=settings.AWS_S3_BUCKET)
+    except ClientError as e:
+        raise RuntimeError(f"Failed to connect to S3: {e}")
 
-    except Exception as e:
-        logger.error(
-            f"Failed to set up S3 client: {e}, s3 upload will be skipped, only local export will be used."
-        )
+    return s3_client
 
 
 # Helper function to upload directory content to S3
-def upload_directory_to_s3(directory_path, s3_prefix, s3, AWS_S3_BUCKET):
+def upload_directory_to_s3(directory_path, s3_prefix, s3_client, AWS_S3_BUCKET):
     """
     Uploads the contents of a local directory to an S3 bucket.
 
     Args:
         directory_path (str): Path to the local directory to upload.
         s3_prefix (str): S3 prefix (path) where the files will be uploaded.
-        s3 (boto3.client): Boto3 S3 client object.
+        s3_client (boto3.client): Boto3 S3 client object.
         AWS_S3_BUCKET (str): Name of the S3 bucket.
 
     Returns:
@@ -112,7 +71,7 @@ def upload_directory_to_s3(directory_path, s3_prefix, s3, AWS_S3_BUCKET):
             s3_object_name = f"{s3_prefix}/{relative_path}"
 
             try:
-                s3.upload_file(local_file_path, AWS_S3_BUCKET, s3_object_name)
+                s3_client.upload_file(local_file_path, AWS_S3_BUCKET, s3_object_name)
                 logger.info(
                     f"Uploaded {local_file_path} to s3://{AWS_S3_BUCKET}/{s3_object_name}"
                 )
@@ -148,17 +107,17 @@ def downloadDirectoryFroms3(bucketName, remoteDirectoryName, localDirectoryName)
         bucket.download_file(obj.key, local_file_path)
 
 
-def list_directories_in_bucket(bucket_name: str) -> list[str]:
+def list_directories_in_bucket(s3_client, bucket_name: str) -> list[str]:
     """
     Lists all top-level directories in a given S3 bucket.
 
     Args:
+        s3_client (boto3.client): Boto3 S3 client object.
         bucket_name (str): The name of the S3 bucket.
 
     Returns:
         list[str]: A list of directory names (prefixes ending with '/').
     """
-    s3_client = boto3.client("s3")
     directories = (
         set()
     )  # Use a set to avoid duplicates if pagination returns overlapping prefixes

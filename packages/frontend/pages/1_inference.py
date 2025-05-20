@@ -86,7 +86,9 @@ if prompt := st.chat_input("What is up?"):
         is_error = False
         try:
             # Assuming your FastAPI backend is running at http://localhost:8000
-            INFERENCE_URL = os.getenv("INFERENCE_URL")
+            INFERENCE_URL = os.getenv(
+                "INFERENCE_URL", "http://unsloth-backend:8000/infer/"
+            )
 
             # join the inference URL with the endpoint
             api_url = urljoin(INFERENCE_URL, "/infer")

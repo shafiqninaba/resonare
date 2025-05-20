@@ -20,9 +20,15 @@ def get_s3_client() -> boto3.client:
     Returns:
         boto3.client: Boto3 S3 client object.
     """
-    
+
     # Check if the required environment variables are set
-    if not all([settings.AWS_ACCESS_KEY_ID, settings.AWS_SECRET_ACCESS_KEY, settings.AWS_REGION]):
+    if not all(
+        [
+            settings.AWS_ACCESS_KEY_ID,
+            settings.AWS_SECRET_ACCESS_KEY,
+            settings.AWS_REGION,
+        ]
+    ):
         raise ValueError(
             "AWS credentials and region must be set in the environment variables."
         )

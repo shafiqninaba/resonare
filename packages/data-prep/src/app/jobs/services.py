@@ -11,13 +11,13 @@ from fastapi import HTTPException, status
 
 from ..core.config import settings
 from ..core.s3_client import get_s3_client
-from .tasks import run_data_processing
 from .schemas import (
     DataPrepRequest,
     DataPrepRequestResponse,
     JobInfo,
     JobStatus,
 )
+from .tasks import run_data_processing
 
 
 class JobService:
@@ -105,13 +105,13 @@ class JobService:
             try:
                 # dispatch your processing function in a thread
                 stats = await asyncio.to_thread(
-                        run_data_processing,
-                        run_id=run_id,
-                        raw_json_path=spec["path"],
-                        s3_client=self.s3_client,
-                        s3_bucket_name=self.bucket,
-                        overrides=spec["overrides"],
-                    )
+                    run_data_processing,
+                    run_id=run_id,
+                    raw_json_path=spec["path"],
+                    s3_client=self.s3_client,
+                    s3_bucket_name=self.bucket,
+                    overrides=spec["overrides"],
+                )
                 job.status = JobStatus.COMPLETED
                 job.completed_at = datetime.utcnow()
                 job.stats = stats
@@ -137,4 +137,5 @@ class JobService:
             self.statuses[rid].position_in_queue = idx + 1
 
 
+# singleton
 job_service_singleton = JobService()

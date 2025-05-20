@@ -100,7 +100,7 @@ fine_tuning:
     # chatml
 
   training:
-    per_device_train_batch_size: 1
+    per_device_train_batch_size: 2
     gradient_accumulation_steps: 4
     warmup_steps: 5
     max_steps: 60

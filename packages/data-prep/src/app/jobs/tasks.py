@@ -7,7 +7,6 @@ import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from urllib.parse import urljoin
 
 import boto3
 import hydra
@@ -25,7 +24,11 @@ logger = logging.getLogger(__name__)
 
 
 def run_data_processing(
-    run_id: str, raw_json_path: str, s3_client: boto3.client, s3_bucket_name: str, overrides: Dict[str, Any],
+    run_id: str,
+    raw_json_path: str,
+    s3_client: boto3.client,
+    s3_bucket_name: str,
+    overrides: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
     End‑to‑end preprocessing worker.
@@ -697,7 +700,7 @@ def run_data_processing(
     # -------------------------------
     # 9) Send request to fine-tuning service to start the training job
     # -------------------------------
-    fine_tuning_url = urljoin(os.getenv("FINE_TUNING_SERVICE_URL"), "/fine-tune")
+    fine_tuning_url = os.getenv("FINE_TUNING_SERVICE_URL")
 
     if not fine_tuning_url:
         logger.error("FINE_TUNING_SERVICE_URL environment variable is not set.")

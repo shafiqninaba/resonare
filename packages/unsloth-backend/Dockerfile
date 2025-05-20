@@ -56,4 +56,4 @@ RUN --mount=type=cache,target=/opt/dlami/nvme/uv-cache \
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
 
-CMD ["fastapi", "run", "main.py"]
+CMD ["fastapi", "run", "src/app/main.py"]

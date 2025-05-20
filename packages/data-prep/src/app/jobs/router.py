@@ -3,13 +3,14 @@ from typing import Any, Dict, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from app.jobs.services import JobService
+
+from ..dependencies import get_job_service_dep
 from .schemas import (
     DataPrepRequest,
     DataPrepRequestResponse,
     JobInfo,
 )
-from ..dependencies import get_job_service_dep
-from app.jobs.services import JobService
 
 router = APIRouter(tags=["jobs"], prefix="/jobs")
 
@@ -21,7 +22,7 @@ router = APIRouter(tags=["jobs"], prefix="/jobs")
 )
 async def submit_job(
     req: DataPrepRequest,
-    job_service: JobService = Depends(get_job_service_dep), # Correct type hint and DI
+    job_service: JobService = Depends(get_job_service_dep),  # Correct type hint and DI
 ) -> DataPrepRequestResponse:
     return await job_service.create_job(req)
 
@@ -34,7 +35,7 @@ async def get_jobs(
     run_id: str | None = Query(
         None,
         description="If provided, fetch only this job by ID",
-        regex="^[0-9a-f]{32}$",
+        pattern="^[0-9a-f]{32}$",
     ),
     job_service: JobService = Depends(get_job_service_dep),
 ) -> Union[Dict[str, JobInfo], JobInfo]:

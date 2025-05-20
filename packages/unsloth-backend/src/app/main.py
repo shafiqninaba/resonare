@@ -1,32 +1,34 @@
-# app/main.py
+# src/app/main.py
 import asyncio
-import os
-from logging import getLogger
-from pathlib import Path
+from contextlib import asynccontextmanager
 
 from botocore.exceptions import BotoCoreError, ClientError
+from dotenv import load_dotenv
 from fastapi import FastAPI
 
-from .core.config import settings
-from .dependencies import get_job_service_dep, get_s3_client_dep
-from .jobs.router import router as jobs_router
-from .system.router import router as system_router
-from .utils.general import setup_standard_logging
+# Core application components
+from src.app.core.config import settings
+from src.app.dependencies import get_fine_tune_job_service_dep, get_s3_client_dep
+from src.app.finetune.router import router as finetune_router
+from src.app.inference.router import router as inference_router
 
-# Initialize logging
-project_root = Path(__file__).parent
-logger = getLogger(__name__)
-logger.info("Setting up logging configuration.")
-setup_standard_logging(
-    logging_config_path=os.path.join(
-        "/app/conf",
-        "logging.yaml",
-    ),
-)
-logger.info("Logging configuration set up successfully.")
+# Routers
+from src.app.system.router import router as system_router
+from src.app.utils.general import setup_logger
+
+# Set up logging
+logger = setup_logger(__name__)
+
+# Load environment variables
+
+load_dotenv()
 
 
+@asynccontextmanager
 async def lifespan(app: FastAPI):
+    # --- Startup ---
+    logger.info(f"Starting up {settings.PROJECT_NAME}...")
+
     # Eagerly initialize & validate S3 client
     logger.info("Setting up S3 client on application startup")
     try:
@@ -36,15 +38,18 @@ async def lifespan(app: FastAPI):
         raise RuntimeError(f"Failed to connect to S3: {e}")
     logger.info("S3 client initialized successfully.")
 
-    # Start background job worker
+    # 2. Start Fine-Tuning Job Worker
     logger.info("Starting background job worker...")
-    job_service = get_job_service_dep()
+    job_service = get_fine_tune_job_service_dep()
     worker_task = asyncio.create_task(job_service.worker_loop())
     logger.info("Background job worker started.")
 
-    yield  # application is up
+    # InferenceService is initialized on first use via DI, no startup action needed here
+    # unless you want to pre-warm its cache or something similar.
 
-    # Shutdown: cancel the worker
+    yield  # Application is ready
+
+    # --- Shutdown ---
     logger.info("Shutting down background job worker...")  # Renamed log message
     worker_task.cancel()
     try:
@@ -54,16 +59,18 @@ async def lifespan(app: FastAPI):
     logger.info("Background job worker shut down.")
 
 
-# Create the FastAPI app with lifespan
+# Create FastAPI app instance
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description=settings.PROJECT_DESCRIPTION,
+    version=getattr(settings, "API_VERSION_STR", "0.1.0"),
     lifespan=lifespan,
 )
 
-# Include routers
-app.include_router(system_router)
-app.include_router(jobs_router)
+# Include Routers
+app.include_router(system_router, tags=["System"])
+app.include_router(finetune_router, tags=["Fine-Tuning"])
+app.include_router(inference_router, tags=["Inference"])
 
 
 # Basic root endpoint

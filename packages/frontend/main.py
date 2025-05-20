@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import time
 from typing import Any, Dict, List, Optional
+from urllib.parse import urljoin
 
 import requests
 import streamlit as st
@@ -10,7 +11,9 @@ from src.utils import display_chat_summary, parse_json_chats, poll_job
 
 # Service URLs
 DATA_PREP_URL = os.getenv("DATA_PREP_URL", "http://data-prep:8000")
-FINE_TUNE_URL = os.getenv("FINE_TUNING_SERVICE_URL", "http://unsloth-backend:8000")
+FINE_TUNE_URL = os.getenv(
+    "FINE_TUNING_SERVICE_URL", "http://unsloth-backend:8000/fine-tune"
+)
 
 
 def submit_data_prep_job(
@@ -144,7 +147,9 @@ def main() -> None:
     if "run_ids" not in st.session_state:
         st.session_state.run_ids = []
 
-    # --- Step 1: Export Instructions ---
+    # --------------------------------------------------------------------
+    # Step 1: Export Instructions
+    # --------------------------------------------------------------------
     st.header("📥 Step 1: Export Your Chat Data")
     with st.expander("Click here for export instructions", expanded=False):
         st.markdown(
@@ -176,7 +181,9 @@ def main() -> None:
         """
     )
 
-    # --- Step 2: Upload ---
+    # --------------------------------------------------------------------
+    # Step 2: Upload JSON Files
+    # --------------------------------------------------------------------
     st.header("📤 Step 2: Upload JSON Files")
     files = st.file_uploader(
         "Drop JSON exports here:",
@@ -190,7 +197,9 @@ def main() -> None:
         if chats:
             st.success(f"Loaded {len(chats)} chat file(s).")
 
-    # --- Step 3: Select Target ---
+    # --------------------------------------------------------------------
+    # Step 3: Select Target
+    # --------------------------------------------------------------------
     st.header("Step 3: Select Target")
     target_name: Optional[str] = None
     if sender_names:
@@ -202,7 +211,9 @@ def main() -> None:
     else:
         st.warning("No valid chat data found. Please upload JSON file(s) first.")
 
-    # --- Advanced Options ---
+    # --------------------------------------------------------------------
+    # Advanced Options
+    # --------------------------------------------------------------------
     st.header("Step 4: Advanced Options")
     with st.expander("Click here for advanced options", expanded=False):
         col1, col2 = st.columns(2)
@@ -291,7 +302,9 @@ def main() -> None:
                 help="Total training steps.",
             )
 
-    # --- Submission ---
+    # --------------------------------------------------------------------
+    # Job Submission
+    # --------------------------------------------------------------------
     if st.button("🚀 Start building!"):
         if not chats:
             st.error("Upload at least one JSON file first.")
@@ -317,7 +330,7 @@ def main() -> None:
                 max_steps=max_steps,
             )
             if run_id:
-                st.success("Job successfully queued.")
+                st.success("Data Prep Job successfully queued.")
                 st.markdown(f"""
                 **Run ID:**
                 ```
@@ -349,7 +362,8 @@ def main() -> None:
         # Poll fine-tune until done
         with st.spinner(f"Running fine-tune for {current}…", show_time=True):
             while True:
-                ft = poll_job(f"{FINE_TUNE_URL}/jobs/{current}")
+                status_url = urljoin(FINE_TUNE_URL, f"jobs/{current}")
+                ft = poll_job(status_url)
                 if ft.get("status") in ("completed", "failed"):
                     break
                 time.sleep(2)
