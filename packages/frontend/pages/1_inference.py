@@ -21,6 +21,10 @@ if "run_ids" not in st.session_state:
 if "run_id_locked" not in st.session_state:
     st.session_state.run_id_locked = False
 
+if "train_metadata" not in st.session_state:
+    st.session_state.train_metadata = {"x-amz-meta-target_name": "assistant"}
+
+
 # --- Run ID Input ---
 run_id_input = st.text_input(
     "Enter Run ID",
@@ -150,9 +154,11 @@ if prompt := st.chat_input("What is up?"):
         # Display assistant response(s)
         if is_error or not assistant_response_content:
             # Display the error as a single message
-            with st.chat_message(train_metadata["x-amz-meta-target_name"]):
+            meta = st.session_state.train_metadata
+            role = meta.get("x-amz-meta-target_name", "assistant")
+            with st.chat_message(role):
                 st.markdown(
-                    f"{train_metadata['x-amz-meta-target_name']}: {assistant_response_content}"
+                    f"{role}: {assistant_response_content}"
                     or "Error: Empty response received."
                 )
             # Add the single error message to history

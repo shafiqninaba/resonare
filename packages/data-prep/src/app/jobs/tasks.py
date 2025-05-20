@@ -30,23 +30,27 @@ def run_data_processing(
     s3_bucket_name: str,
     overrides: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """
-    End‑to‑end preprocessing worker.
+    """End-to-end preprocessing worker.
 
-    Parameters
-    ----------
-    run_id      : uuid string
-    raw_json_path: temp path to the raw JSON file containing chat data
-    s3_client    : boto3 S3 client
-    s3_bucket_name: S3 bucket name
-    overrides    : dict with overrides for the configuration
-    Returns a dict of summary statistics at the end, e.g.
-    {
-      "num_chats": 12,
-      "num_blocks": 345,
-      "avg_tokens_per_block": 150.2,
-      ...
-    }
+    Args:
+        run_id (str): UUID string identifying this job.
+        raw_json_path (str): Path to the temporary JSON file containing raw chat data.
+        s3_client (boto3.client): Authenticated Boto3 S3 client.
+        s3_bucket_name (str): Name of the S3 bucket for uploading results.
+        overrides (Dict[str, Any]): Configuration overrides (e.g., thresholds, names).
+
+    Returns:
+        Dict[str, Any]: A dictionary of summary statistics, for example:
+            {
+                "num_chats": 12,
+                "num_blocks": 345,
+                "avg_tokens_per_block": 150.2,
+                ...
+            }
+
+    Raises:
+        FileNotFoundError: If the raw JSON file cannot be found.
+        RuntimeError: For any S3 upload/download or processing errors.
     """
     # Load configuration
     with hydra.initialize(config_path="../../../conf"):

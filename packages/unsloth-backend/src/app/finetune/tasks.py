@@ -5,9 +5,9 @@ import boto3
 import torch
 from datasets import load_dataset
 from dotenv import load_dotenv
+from unsloth import FastLanguageModel, FastModel, is_bfloat16_supported
 from transformers import DataCollatorForSeq2Seq, TrainingArguments
 from trl import SFTTrainer
-from unsloth import FastLanguageModel, FastModel, is_bfloat16_supported
 from unsloth.chat_templates import (
     get_chat_template,
     standardize_sharegpt,
@@ -23,7 +23,63 @@ logger = setup_logger("fine_tuning")
 
 
 def run_fine_tuning(run_id: str, s3_client: boto3.client, bucket_name: str) -> None:
-    """Background task to run the fine-tuning process"""
+    """Background task to run the fine-tuning process end-to-end.
+
+    This function orchestrates downloading the dataset from S3, loading
+    and adapting the pretrained model, training with LoRA adapters, and
+    uploading the resulting adapters back to S3 (and optionally to Hugging Face Hub).
+
+    Args:
+        run_id (str):
+            Unique identifier for this fine-tuning run.  
+            Used to locate data and to namespace output artifacts.
+        s3_client (boto3.client):
+            Authenticated boto3 S3 client for downloading/uploading files.
+        bucket_name (str):
+            Name of the S3 bucket where training data and model artifacts reside.
+
+    Raises:
+        RuntimeError:
+            If any step in the process fails (dataset download, model load,
+            training, or upload), an error is logged and re-raised.
+
+    Workflow Summary:
+        1. **Dataset download & metadata**  
+           • Construct S3 key: `{run_id}/data/train.jsonl`  
+           • Download to a temporary directory.  
+           • Read S3 object metadata (HTTPHeaders) for training config.
+
+        2. **Model & tokenizer loading**  
+           • Based on `ft_model_name` metadata, choose between `FastLanguageModel`  
+             or `FastModel`.  
+           • Load with quantization flags (`4bit`, `8bit`, etc.).
+
+        3. **LoRA adapter setup**  
+           • Attach lightweight LoRA adapters to the base model.  
+           • Configure adapter hyperparameters (r, alpha, dropout, etc.)  
+             from metadata.
+
+        4. **Data preparation**  
+           • Standardize raw JSON into conversation blocks.  
+           • Apply the chosen chat template to produce text inputs.
+
+        5. **Trainer initialization**  
+           • Instantiate `SFTTrainer` with model, tokenizer, dataset,  
+             data collator, and `TrainingArguments` (batch size, LR, epochs).
+
+        6. **Fine-tuning**  
+           • Optionally wrap trainer via `train_on_responses_only` based on template.  
+           • Execute `trainer.train()` and log GPU memory / time statistics.
+
+        7. **Artifact saving & upload**  
+           • Save LoRA adapters (model & tokenizer) locally under `lora_model/`.  
+           • Upload the folder back to S3 at `{run_id}/lora_model`.  
+           • If `HUGGINGFACE_USERNAME` & `HUGGINGFACE_TOKEN` are set,  
+             push to your private HF repo.
+
+        8. **Error handling**  
+           • Any exception is logged in detail and then re-raises to mark the job as failed.
+    """
     try:
         logger.info(f"Starting fine-tuning for run_id: {run_id}")
 

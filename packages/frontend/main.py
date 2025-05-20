@@ -150,7 +150,7 @@ def main() -> None:
     # --------------------------------------------------------------------
     # Step 1: Export Instructions
     # --------------------------------------------------------------------
-    st.header("📥 Step 1: Export Your Chat Data")
+    st.header("Step 1: Export Chat Data")
     with st.expander("Click here for export instructions", expanded=False):
         st.markdown(
             """
@@ -184,7 +184,7 @@ def main() -> None:
     # --------------------------------------------------------------------
     # Step 2: Upload JSON Files
     # --------------------------------------------------------------------
-    st.header("📤 Step 2: Upload JSON Files")
+    st.header("Step 2: Upload JSON Files")
     files = st.file_uploader(
         "Drop JSON exports here:",
         type="json",
@@ -305,13 +305,13 @@ def main() -> None:
     # --------------------------------------------------------------------
     # Job Submission
     # --------------------------------------------------------------------
-    if st.button("🚀 Start building!"):
+    if st.button("🚀 Start training"):
         if not chats:
             st.error("Upload at least one JSON file first.")
         elif not target_name:
             st.error("Select a target name before continuing.")
         else:
-            st.info("Queuing data-prep job …")
+            st.info("Queuing Data-prep Job  …")
             run_id = submit_data_prep_job(
                 chats=chats,
                 target_name=target_name,
@@ -330,7 +330,7 @@ def main() -> None:
                 max_steps=max_steps,
             )
             if run_id:
-                st.success("Data Prep Job successfully queued.")
+                st.success("Data-prep Job successfully queued.")
                 st.markdown(f"""
                 **Run ID:**
                 ```
@@ -346,7 +346,7 @@ def main() -> None:
         current = st.session_state.run_ids[-1]
         st.markdown(f"**Current Run ID:** {current}")
         # Poll data-prep until done
-        with st.spinner(f"Processing data-prep for {current}…", show_time=True):
+        with st.spinner(f"Running Data-prep Job for {current}…", show_time=True):
             while True:
                 dp = poll_job(f"{DATA_PREP_URL}/jobs?run_id={current}")
                 if dp.get("status") in ("completed", "failed"):
@@ -354,7 +354,7 @@ def main() -> None:
                 time.sleep(2)
 
         if dp.get("status") == "completed":
-            st.success("Data-prep completed!")
+            st.success("Data-prep Job sucessfully completed!")
             display_chat_summary(dp.get("stats", {}))
         else:
             st.error(f"Data-prep failed: {dp.get('error')}")

@@ -7,26 +7,23 @@ from omegaconf import OmegaConf
 
 
 def setup_logger(name: str) -> logging.Logger:
-    """
-    Set up a logger for the application.
+    """Sets up and returns a named logger configured via YAML or falls back to basic logging.
+
+    Attempts to read `conf/logging.yaml` for a structured configuration under `logging:`.
+    If that fails, initializes a basic logger at INFO level and logs the error.
 
     Args:
-        name (str): Name of the logger.
+        name (str): The namespace/name for the logger.
 
     Returns:
-        logger (logging.Logger): Configured logger instance.
+        logging.Logger: A logger instance configured per the YAML file or basic settings on error.
     """
     try:
-        # Load logging configuration from YAML file
         cfg = OmegaConf.load("conf/logging.yaml")
         logging_config = OmegaConf.to_container(cfg.logging, resolve=True)
-
-        # Initialize logging
         logging.config.dictConfig(logging_config)
-        logger = logging.getLogger(name)
-        return logger
+        return logging.getLogger(name)
     except Exception as e:
-        # Fallback to basic logging if YAML loading fails
         logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger(name)
         logger.error(f"Failed to load logging configuration: {e}. Using basic logging.")
@@ -34,37 +31,41 @@ def setup_logger(name: str) -> logging.Logger:
         return logger
 
 
-def parse_metadata(headers):
-    """Parse S3 metadata headers and convert to appropriate types"""
+def parse_metadata(headers: dict) -> dict:
+    """Parses S3 object metadata headers, converting strings to bool, int, float, list, or leaving as str.
+
+    Iterates over keys starting with `x-amz-meta-` and attempts:
+      - Boolean casting for "true"/"false"
+      - Integer casting for digit strings (with optional leading minus)
+      - Float casting for numeric strings with at most one decimal point
+      - List parsing via `ast.literal_eval` for bracket-delimited strings
+      - Fallback to the original string if no casting applies or parsing fails
+
+    Args:
+        headers (dict): The HTTP headers dict from an S3 `head_object` response.
+
+    Returns:
+        dict: A mapping of metadata keys to values typed as bool, int, float, list, or str.
+    """
     cfg = {}
     for key, value in headers.items():
-        if key.startswith("x-amz-meta-"):
-            clean_key = key
+        if not key.startswith("x-amz-meta-"):
+            continue
 
-            # Handle booleans
-            if value.lower() in ("true", "false"):
-                cfg[clean_key] = value.lower() == "true"
-
-            # Handle integers
-            elif value.isdigit() or (value.startswith("-") and value[1:].isdigit()):
-                cfg[clean_key] = int(value)
-
-            # Handle floats
-            elif value.replace(".", "", 1).isdigit() or (
-                value.startswith("-") and value[1:].replace(".", "", 1).isdigit()
-            ):
-                cfg[clean_key] = float(value)
-
-            # Handle lists
-            elif value.startswith("[") and value.endswith("]"):
-                try:
-                    cfg[clean_key] = ast.literal_eval(value)
-                except (SyntaxError, ValueError):
-                    # Fallback to string if parsing fails
-                    cfg[clean_key] = value
-
-            # Keep as string for other values
-            else:
-                cfg[clean_key] = value
+        if value.lower() in ("true", "false"):
+            cfg[key] = (value.lower() == "true")
+        elif value.isdigit() or (value.startswith("-") and value[1:].isdigit()):
+            cfg[key] = int(value)
+        elif value.replace(".", "", 1).isdigit() or (
+            value.startswith("-") and value[1:].replace(".", "", 1).isdigit()
+        ):
+            cfg[key] = float(value)
+        elif value.startswith("[") and value.endswith("]"):
+            try:
+                cfg[key] = ast.literal_eval(value)
+            except (SyntaxError, ValueError):
+                cfg[key] = value
+        else:
+            cfg[key] = value
 
     return cfg

@@ -1,5 +1,3 @@
-# src/app/system/router.py
-
 from typing import Dict
 
 import torch
@@ -19,10 +17,23 @@ router = APIRouter(tags=["system"], prefix="/system")
 async def get_health_status(
     s3_client=Depends(get_s3_client_dep),
 ) -> Dict[str, str]:
-    """
-    Health check endpoint that verifies:
-      - S3 client can reach the bucket
-      - GPU is available (and how many devices)
+    """Health check endpoint.
+
+    Verifies that the S3 client can reach the configured bucket and reports on GPU availability.
+
+    Args:
+        s3_client (boto3.client): Injected S3 client dependency.
+
+    Returns:
+        Dict[str, str]:
+            A dict containing:
+                status: Always "healthy".
+                s3_connection: "connected".
+                gpu_status: "available" or "unavailable".
+                gpu_info: Number of GPU devices (e.g., "1 device(s)") or "none".
+
+    Raises:
+        HTTPException: If the S3 client cannot connect to the bucket.
     """
     # 1) S3 connectivity
     try:

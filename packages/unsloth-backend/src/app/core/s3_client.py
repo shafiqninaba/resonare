@@ -82,6 +82,17 @@ def upload_directory_to_s3(directory_path, s3_prefix, s3_client, AWS_S3_BUCKET):
 
 
 def downloadDirectoryFroms3(bucketName, remoteDirectoryName, localDirectoryName):
+    """Download all files from an S3 “directory” (prefix) into a local folder.
+
+    Args:
+        bucketName (str): The name of the S3 bucket to read from.
+        remoteDirectoryName (str): The prefix/key “directory” in the bucket whose contents should be downloaded.
+        localDirectoryName (str): The path to the local directory where files will be saved.
+
+    Raises:
+        botocore.exceptions.ClientError: If any S3 download operation fails.
+        OSError: If the local directory cannot be created or written to.
+    """
     s3_resource = boto3.resource("s3")
     bucket = s3_resource.Bucket(bucketName)
     logger.info(

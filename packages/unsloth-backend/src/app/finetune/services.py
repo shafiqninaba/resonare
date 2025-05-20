@@ -16,7 +16,18 @@ from .tasks import run_fine_tuning
 
 
 class JobService:
+    """
+    Manages the lifecycle of fine-tuning jobs: queuing, execution, and status tracking.
+
+    Attributes:
+        s3_client: Cached boto3 S3 client for interacting with the storage bucket.
+        bucket: Name of the S3 bucket where training artifacts live.
+        queue: In-memory FIFO queue of pending run IDs.
+        statuses: Mapping from run_id to its JobInfo (status, timestamps, etc.).
+        running: Flag indicating whether a job is currently in progress.
+    """
     def __init__(self):
+        """Initializes the JobService with S3 client, bucket name, and empty job state."""
         self.s3_client = get_s3_client()
         self.bucket = settings.AWS_S3_BUCKET
 
@@ -26,6 +37,18 @@ class JobService:
         self.running = False
 
     async def submit(self, req: FineTuneRequest) -> FineTuneResponse:
+        """
+        Enqueue a new fine-tuning job.
+
+        Args:
+            req (FineTuneRequest): The request payload containing the run_id.
+
+        Returns:
+            FineTuneResponse: Confirmation that the job was queued, including its position.
+
+        Raises:
+            HTTPException: If a job with the same run_id already exists (409 Conflict).
+        """
         run_id = req.run_id
         if run_id in self.statuses:
             raise HTTPException(
@@ -53,9 +76,14 @@ class JobService:
 
     async def worker_loop(self):
         """
-        Background loop: pull run_ids off the queue,
-        mark them running, call run_fine_tuning in a thread,
-        then update status/result.
+        Background loop to process fine-tuning jobs one at a time.
+
+        Workflow:
+          1. Pull the next run_id from the queue.
+          2. Mark its status as RUNNING and record the start time.
+          3. Dispatch `run_fine_tuning` in a separate thread.
+          4. On success, mark COMPLETED; on failure, mark FAILED with the error.
+          5. Clear the `running` flag and mark the task as done.
         """
         while True:
             run_id = await self.queue.get()
@@ -89,9 +117,23 @@ class JobService:
                 self.queue.task_done()
 
     def get_status(self, run_id: str) -> JobInfo:
+        """
+        Retrieve the current status of a given fine-tuning job.
+
+        Args:
+            run_id (str): The unique identifier of the job.
+
+        Returns:
+            JobInfo: The status record for the job, or None if not found.
+        """
         return self.statuses.get(run_id)
 
     def _update_positions(self):
+        """
+        Recompute the `position_in_queue` for each queued job.
+
+        Ensures that every JobInfo in QUEUED state has an accurate index.
+        """
         queued = [
             rid
             for rid, info in self.statuses.items()
@@ -106,4 +148,10 @@ job_service_singleton = JobService()
 
 
 def get_job_service() -> JobService:
+    """
+    Dependency injector for JobService singleton.
+
+    Returns:
+        JobService: The application-wide JobService instance.
+    """
     return job_service_singleton

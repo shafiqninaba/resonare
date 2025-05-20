@@ -22,6 +22,14 @@ from .tasks import run_data_processing
 
 class JobService:
     def __init__(self):
+        """
+        Initialize the JobService.
+
+        Sets up:
+          - Cached S3 client and target bucket
+          - Async queue for job IDs
+          - Dictionaries for job status and input metadata
+        """
         # S3 client & bucket
         self.s3_client = get_s3_client()
         self.bucket = settings.AWS_S3_BUCKET
@@ -33,6 +41,19 @@ class JobService:
         self.job_running = False
 
     async def create_job(self, req: DataPrepRequest) -> DataPrepRequestResponse:
+        """
+        Enqueue a new data preparation job.
+
+        Args:
+            req (DataPrepRequest): Contains raw chat data and optional overrides.
+
+        Returns:
+            DataPrepRequestResponse: Includes run_id, status, and a message.
+
+        Raises:
+            HTTPException 400: If `chats` payload is not a list or dict.
+            HTTPException 409: If a UUID collision occurs (extremely unlikely).
+        """
         # 1) Generate ID and collision check (very unlikely)
         run_id = uuid.uuid4().hex
         if run_id in self.statuses:
@@ -84,8 +105,8 @@ class JobService:
 
     async def worker_loop(self):
         """
-        Pull jobs off the queue, mark their status, run the processing
-        in a thread, and update status on completion/failure.
+        Background worker loop that pulls jobs off the queue, processes them,
+        and updates each job’s status when done (or failed).
         """
         while True:
             run_id = await self.queue.get()
@@ -125,9 +146,21 @@ class JobService:
                 self.queue.task_done()
 
     def get_status(self, run_id: str) -> JobInfo:
+        """
+        Fetch the JobInfo for a given run_id.
+
+        Args:
+            run_id (str): The identifier of the job.
+
+        Returns:
+            JobInfo: Status object, or None if not found.
+        """
         return self.statuses.get(run_id)
 
     def _update_queue_positions(self):
+        """
+        Recompute `position_in_queue` for all queued jobs, in FIFO order.
+        """
         queued = [
             rid
             for rid, info in self.statuses.items()
