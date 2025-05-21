@@ -132,9 +132,17 @@ flowchart TD
 
 #### Key Components
 
+- **FastAPI**: The API server that handles the requests from the client and manages the job queue.
+- **Job Queue**: An in-memory queue that manages the jobs and ensures that the GPU is not overloaded with multiple jobs at the same time.
+- **Async Worker**: A background worker that processes the jobs in the queue. It loads the JSON file, processes it and uploads the processed files to S3.
+- **S3**: An AWS S3 bucket that stores the processed files. The raw JSON file is also uploaded to S3 for backup purposes.
+- **Processing Pipeline**: The pipeline that processes the raw JSON file and generates the processed files. It includes steps such as loading the JSON file, chunking the chats into blocks, merging and sanitizing the data, computing statistics and exporting the processed files.
+- **Statistics**: The statistics about the raw JSON file are computed and logged. This includes the number of blocks, tokens, messages, chats and users in the file.
+- **Health Check**: The health check endpoint checks the status of the S3 bucket and the job queue. It returns the status of the S3 bucket and the number of jobs in the queue.
+
+More information about the data pipeline can be found in this [`README.md`](packages/data-prep/README.md).
+
 ### Fine-Tuning
-
-
 
 #### Software Architecture
 The diagram below shows the high-level architecture of the application.
@@ -199,6 +207,15 @@ flowchart TD
 
 #### Key Components
 
+- **FastAPI**: The API server that handles the requests from the client and manages the job queue.
+- **Job Queue**: An in-memory queue that manages the jobs and ensures that the GPU is not overloaded with multiple jobs at the same time.
+- **Async Worker**: A background worker that processes the jobs in the queue. It loads the JSON file, processes it and uploads the processed files to S3.
+- **S3**: An AWS S3 bucket that stores the processed files. The raw JSON file is also uploaded to S3 for backup purposes.
+- **Fine-Tuning Pipeline**: The pipeline that fine-tunes the LLM on the processed data. It includes steps such as loading the model, training the model and uploading the model to S3.
+- **Inference Pipeline**: The pipeline that generates the response from the LLM Twin. It includes steps such as loading the model, generating the response and returning the response to the client.
+- **Health Check**: The health check endpoint checks the status of the S3 bucket and the job queue. It returns the status of the S3 bucket and the number of jobs in the queue.
+- **Unsloth**: Unsloth is used for fine-tuning the LLM. It allows models to be fine tuned on lesser GPU compute resources.
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- DEMO -->
@@ -215,13 +232,15 @@ The gifs below showcase the key features of the application and showing it in ac
 The gif above shows the user uploading a JSON file containing their Telegram chat data. The file is then processed and the user can monitor the job status in real-time in the Job Monitor tab. The processed data is stored in an S3 bucket.
 
 <div align="center">
-  <img src="assets/images/data-prep-stats.jpg" alt="Upload Data Demo"> <p><em>Figure 1: Uploading and Processing Data</em></p>
+  <img src="assets/images/data-prep-stats.jpg" alt="Data Prep Statistics"> <p><em>Figure 2: Some statitics about the raw Telegram data</em></p>
 </div>
+
+The user can also see some statistics about the raw Telegram data, such as the number of blocks, tokens etc. This is useful for the user to understand the data they are working with.
 
 ### Checking Job Queue
 
 <div align="center">
-  <img src="assets/images/job_queue.jpg" alt="Job Queue Screenshot"> <p><em>Figure 2: Job Queue</em></p>
+  <img src="assets/images/job_queue.jpg" alt="Job Queue Screenshot"> <p><em>Figure 3: Job Queue</em></p>
 </div>
 
 When another user uploads a file, the job is added to the queue. This is so that the GPU will not be overloaded with multiple jobs at the same time. The user can check the queue status in the Job Monitor tab. The job queue is managed by a in memory queue.
@@ -229,32 +248,38 @@ When another user uploads a file, the job is added to the queue. This is so that
 ### Chatting with the LLM Twin
 
 <div align="center">
-  <img src="assets/gifs/chatting-with-twin.gif" alt="Chatting with LLM Twin"> <p><em>Figure 3: Chatting with the LLM Twin</em></p>
+  <img src="assets/gifs/chatting-with-twin.gif" alt="Chatting with LLM Twin"> <p><em>Figure 4: Chatting with the LLM Twin</em></p>
 </div>
 
 The gif above shows the user chatting with their LLM Twin. The user can ask questions and the LLM Twin will respond with a style similar to user's messaging style.
 
-Below are some more examples of the conversations with the LLM Twin. Note that the LLM Twin picked up on the user's Singlish and the way they type.
-
-
-<!-- collapsible markdown -->
+Below are some more examples of the conversations with the LLM Twin. Note that the LLM Twin picked up on the user's Singlish and the way they type. The LLM Twin also has some information about the user, such as their favourite emojis and their favourite field in computer science.
 
 <details>
   <summary>Favourite emojis</summary>
 
   <div align="center">
-    <img src="assets/gifs/chatting-with-twin-2.gif" alt="Chatting with LLM Twin"> <p><em>Figure 4: Chatting with the LLM Twin</em></p>
+    <img src="assets/images/fav_emojis.jpg" alt="Chatting with LLM Twin"> <p><em>Figure 5: What are your favourite emojis?</em></p>
   </div>
 
 </details>
 
 <details>
-  <summary>Favourite emojis</summary>
+  <summary>Favourite field in computer science</summary>
 
   <div align="center">
-    <img src="assets/gifs/chatting-with-twin-2.gif" alt="Chatting with LLM Twin"> <p><em>Figure 4: Chatting with the LLM Twin</em></p>
+    <img src="assets/images/fav_ai_field.jpg" alt="Favourite field in computer science"> <p><em>Figure 6: What is your favourite field in computer science?</em></p>
   </div>
 
+</details>
+
+<details>
+  <summary>Want to eat?</summary>
+
+  <div align="center">
+    <img src="assets/images/want_to_eat.jpg" alt="Favourite field in computer science"> <p><em>Figure 7: Want to eat?</em></p>
+  </div>
+  
 </details>
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
