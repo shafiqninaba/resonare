@@ -95,6 +95,7 @@ The diagram below shows the high-level architecture of the application.
 
 <div align="center">
   <img src="assets/images/overall_architecture.jpg" alt="Overall software architecture" width="70%" height="auto">
+  <p><em>Figure 1: Overall software architecture of Resonare</em></p>
 </div>
 
 #### Key Components
@@ -159,6 +160,8 @@ flowchart TD
     %% Connections
     I ==> N
 ```
+
+<div align="center"> <p><em>Figure 2: Data-Prep architectural flow diagram</em></p> </div>
 
 #### Key Components
 
@@ -236,6 +239,8 @@ flowchart TD
     G3 -- Uses --> H1
 ```
 
+<div align="center"> <p><em>Figure 3: Fine-Tuning architectural flow diagram</em></p> </div>
+
 #### Key Components
 
 - **Unsloth**: Unsloth is used for fine-tuning the LLM. It allows models to be fine tuned on lesser GPU compute resources.
@@ -256,13 +261,15 @@ The gifs below showcase the key features of the application and showing it in ac
 ### Uploading and Processing Data
 
 <div align="center">
-  <img src="assets/gifs/data-prep-to-job-monitor.gif" alt="Upload Data Demo"> <p><em>Figure 1: Uploading and Processing Data</em></p>
+  <img src="assets/gifs/data-prep-to-job-monitor.gif" alt="Upload Data Demo">
+  <p><em>Figure 4: Uploading and Processing Data</em></p>
 </div>
 
 The gif above shows the user uploading a JSON file containing their Telegram chat data. The file is then processed and the user can monitor the job status in real-time in the Job Monitor tab. The processed data is stored in an S3 bucket.
 
 <div align="center">
-  <img src="assets/images/data-prep-stats.jpg" alt="Data Prep Statistics"> <p><em>Figure 2: Some statitics about the raw Telegram data</em></p>
+  <img src="assets/images/data-prep-stats.jpg" alt="Data Prep Statistics">
+  <p><em>Figure 5: Some statistics about the raw Telegram data</em></p>
 </div>
 
 The user can also see some statistics about the raw Telegram data, such as the number of blocks, tokens etc. This is useful for the user to understand the data they are working with.
@@ -270,7 +277,8 @@ The user can also see some statistics about the raw Telegram data, such as the n
 ### Checking Job Queue
 
 <div align="center">
-  <img src="assets/images/job_queue.jpg" alt="Job Queue Screenshot"> <p><em>Figure 3: Job Queue</em></p>
+  <img src="assets/images/job_queue.jpg" alt="Job Queue Screenshot">
+  <p><em>Figure 6: Job Queue</em></p>
 </div>
 
 When another user uploads a file, the job is added to the queue. This is so that the GPU will not be overloaded with multiple jobs at the same time. The user can check the queue status in the Job Monitor tab. The job queue is managed by a in memory queue.
@@ -278,7 +286,8 @@ When another user uploads a file, the job is added to the queue. This is so that
 ### Chatting with the LLM Twin
 
 <div align="center">
-  <img src="assets/gifs/chatting-with-twin.gif" alt="Chatting with LLM Twin"> <p><em>Figure 4: Chatting with the LLM Twin</em></p>
+  <img src="assets/gifs/chatting-with-twin.gif" alt="Chatting with LLM Twin">
+  <p><em>Figure 7: Chatting with the LLM Twin</em></p>
 </div>
 
 The gif above shows the user chatting with their LLM Twin. The user can ask questions and the LLM Twin will respond with a style similar to user's messaging style.
@@ -289,7 +298,8 @@ Below are some more examples of the conversations with the LLM Twin. Note that t
   <summary>Favourite emojis</summary>
 
   <div align="center">
-    <img src="assets/images/fav_emojis.jpg" alt="Chatting with LLM Twin"> <p><em>Figure 5: What are your favourite emojis?</em></p>
+    <img src="assets/images/fav_emojis.jpg" alt="Chatting with LLM Twin">
+    <p><em>Figure 8: What are your favourite emojis?</em></p>
   </div>
 
 </details>
@@ -298,7 +308,8 @@ Below are some more examples of the conversations with the LLM Twin. Note that t
   <summary>Favourite field in computer science</summary>
 
   <div align="center">
-    <img src="assets/images/fav_ai_field.jpg" alt="Favourite field in computer science"> <p><em>Figure 6: What is your favourite field in computer science?</em></p>
+    <img src="assets/images/fav_ai_field.jpg" alt="Favourite field in computer science">
+    <p><em>Figure 9: What is your favourite field in computer science?</em></p>
   </div>
 
 </details>
@@ -307,7 +318,8 @@ Below are some more examples of the conversations with the LLM Twin. Note that t
   <summary>Want to eat?</summary>
 
   <div align="center">
-    <img src="assets/images/want_to_eat.jpg" alt="Favourite field in computer science"> <p><em>Figure 7: Want to eat?</em></p>
+    <img src="assets/images/want_to_eat.jpg" alt="Want to eat conversation">
+    <p><em>Figure 10: Want to eat?</em></p>
   </div>
   
 </details>
