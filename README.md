@@ -24,16 +24,33 @@
   <summary>Table of Contents</summary>
   <ol>
     <li>
-    <a href="#built-with">Built With</a>
+      <a href="#built-with">Built With</a>
     </li>
     <li>
       <a href="#about-the-project">About The Project</a>
       <ul>
         <li><a href="#description">Description</a></li>
-        <li><a href="#data-pipeline">Data Pipeline</a></li>
-        <li><a href="#retrieval-and-question-answering-pipeline">Retrieval and Question Answering Pipeline</a></li>
+        <li><a href="#overview">Overview</a>
+          <ul>
+            <li><a href="#software-architecture">Software Architecture</a></li>
+            <li><a href="#key-components">Key Components</a></li>
+          </ul>
+        </li>
+        <li><a href="#data-prep">Data-Prep</a>
+          <ul>
+            <li><a href="#software-architecture-1">Software Architecture</a></li>
+            <li><a href="#key-components-1">Key Components</a></li>
+          </ul>
+        </li>
+        <li><a href="#fine-tuning">Fine-Tuning</a>
+          <ul>
+            <li><a href="#software-architecture-2">Software Architecture</a></li>
+            <li><a href="#key-components-2">Key Components</a></li>
+          </ul>
+        </li>
       </ul>
     </li>
+    <li><a href="#demo">Demo</a></li>
     <li>
       <a href="#getting-started">Getting Started</a>
       <ul>
@@ -41,8 +58,6 @@
         <li><a href="#installation-and-commands">Installation and Commands</a></li>
       </ul>
     </li>
-    <li><a href="#usage">Usage</a></li>
-    <li><a href="#demo">Demo</a></li>
     <li><a href="#contact">Contact</a></li>
   </ol>
 </details>
@@ -54,6 +69,10 @@
 * <a href="https://github.com/unslothai/unsloth"><img src="https://raw.githubusercontent.com/unslothai/unsloth/main/images/made with unsloth.png" height="30" align="center" style="margin-bottom: 5px" /></a>
 * [![Streamlit][streamlit-img]][streamlit-url]
 * <a href="https://aws.amazon.com/"><img src="https://upload.wikimedia.org/wikipedia/commons/9/93/Amazon_Web_Services_Logo.svg" height="40" align="center" style="margin-bottom: 5px" /></a>
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+***
 
 <!-- ABOUT THE PROJECT -->
 ## About The Project
@@ -78,6 +97,17 @@ The diagram below shows the high-level architecture of the application.
   <img src="assets/images/overall_architecture.jpg" alt="Overall software architecture" width="70%" height="auto">
 </div>
 
+#### Key Components
+
+- **FastAPI**: The API server that handles the requests from the client and manages the job queue.
+- **Job Queue**: An in-memory queue that manages the jobs and ensures that the GPU is not overloaded with multiple jobs at the same time.
+- **Async Worker**: A background worker that processes the jobs in the queue. It loads the JSON file, processes it and uploads the processed files to S3.
+- **S3**: An AWS S3 bucket that stores the processed files. The raw JSON file is also uploaded to S3 for backup purposes.
+- **Docker Compose**: The application is containerized using Docker Compose. This allows for easy deployment and scaling of the application.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+***
 
 ### Data-Prep
 
@@ -132,15 +162,16 @@ flowchart TD
 
 #### Key Components
 
-- **FastAPI**: The API server that handles the requests from the client and manages the job queue.
-- **Job Queue**: An in-memory queue that manages the jobs and ensures that the GPU is not overloaded with multiple jobs at the same time.
-- **Async Worker**: A background worker that processes the jobs in the queue. It loads the JSON file, processes it and uploads the processed files to S3.
-- **S3**: An AWS S3 bucket that stores the processed files. The raw JSON file is also uploaded to S3 for backup purposes.
 - **Processing Pipeline**: The pipeline that processes the raw JSON file and generates the processed files. It includes steps such as loading the JSON file, chunking the chats into blocks, merging and sanitizing the data, computing statistics and exporting the processed files.
 - **Statistics**: The statistics about the raw JSON file are computed and logged. This includes the number of blocks, tokens, messages, chats and users in the file.
 - **Health Check**: The health check endpoint checks the status of the S3 bucket and the job queue. It returns the status of the S3 bucket and the number of jobs in the queue.
 
 More information about the data pipeline can be found in this [`README.md`](packages/data-prep/README.md).
+
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+***
 
 ### Fine-Tuning
 
@@ -207,16 +238,15 @@ flowchart TD
 
 #### Key Components
 
-- **FastAPI**: The API server that handles the requests from the client and manages the job queue.
-- **Job Queue**: An in-memory queue that manages the jobs and ensures that the GPU is not overloaded with multiple jobs at the same time.
-- **Async Worker**: A background worker that processes the jobs in the queue. It loads the JSON file, processes it and uploads the processed files to S3.
-- **S3**: An AWS S3 bucket that stores the processed files. The raw JSON file is also uploaded to S3 for backup purposes.
+- **Unsloth**: Unsloth is used for fine-tuning the LLM. It allows models to be fine tuned on lesser GPU compute resources.
 - **Fine-Tuning Pipeline**: The pipeline that fine-tunes the LLM on the processed data. It includes steps such as loading the model, training the model and uploading the model to S3.
 - **Inference Pipeline**: The pipeline that generates the response from the LLM Twin. It includes steps such as loading the model, generating the response and returning the response to the client.
 - **Health Check**: The health check endpoint checks the status of the S3 bucket and the job queue. It returns the status of the S3 bucket and the number of jobs in the queue.
-- **Unsloth**: Unsloth is used for fine-tuning the LLM. It allows models to be fine tuned on lesser GPU compute resources.
+
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+***
 
 <!-- DEMO -->
 ## Demo
@@ -284,6 +314,8 @@ Below are some more examples of the conversations with the LLM Twin. Note that t
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
+***
+
 <!-- GETTING STARTED -->
 ## Getting Started
 
@@ -329,6 +361,8 @@ docker-compose down
 ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+***
 
 <!-- CONTACT -->
 ## Contact
