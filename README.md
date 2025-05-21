@@ -84,9 +84,13 @@
 
 ### Description
 
-Resonare is an end-to-end LLM Twin pipeline that allows you to create a clone of yourself based on your Telegram chat data. The application consists of three main components: Data-Prep, Fine-Tuning and a frontend interface for the user to upload their data and interact with the LLM Twin.
+_Resonare_ (meaning "echo" in Latin) empowers users to create a personalized LLM-powered chatbot ("LLM Twin") trained on their Telegram chat data. The pipeline automates data cleaning, formatting, fine-tuning, and deployment of a conversational AI that mimics your messaging style and personality.
 
-The motivation behind this project was to learn about fine-tuning LLMs and deploying the application on AWS EC2 with a GPU instance.
+The end-to-end process includes:
+
+- **Data Preparation:** Upload, clean, and chunk your exported Telegram conversations, producing high-quality training data.
+- **Model Fine-Tuning:** Fine-tune a state-of-the-art language model to generate responses that reflect your unique conversational traits.
+- **Inference:** Deploy and interact with your LLM Twin via a simple web interface or API.
 
 ### Overview
 
@@ -105,6 +109,26 @@ The diagram below shows the high-level architecture of the application.
 - **Async Worker**: A background worker that processes the jobs in the queue. It loads the JSON file, processes it and uploads the processed files to S3.
 - **S3**: An AWS S3 bucket that stores the processed files. The raw JSON file is also uploaded to S3 for backup purposes.
 - **Docker Compose**: The application is containerized using Docker Compose. This allows for easy deployment and scaling of the application.
+
+#### Visual Flow
+
+Here’s how a typical user would use Resonare:
+
+1. Export: User exports their Telegram chat history.
+2. Upload: They upload result.json through the web UI.
+3. Processing: The backend prepares processed.json and train.jsonl and uploads them to S3.
+4. Fine-Tune: They submit a fine-tuning job; the system trains their LLM Twin.
+5. Chat: Alice chats with her personalized AI, which responds in her style.
+
+```mermaid
+graph TD
+    A[User Exports Telegram Data] --> B[Upload via Web/API]
+    B --> C[Data Preparation / Processing]
+    C --> D[train.jsonl + processed.json]
+    D --> E[Fine-Tune Model]
+    E --> F[Deploy for Inference]
+    F --> G[User Chats with LLM Twin]
+```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
