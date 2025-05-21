@@ -118,7 +118,7 @@ Here’s how a typical user would use Resonare:
 2. Upload: They upload result.json through the web UI.
 3. Processing: The backend prepares processed.json and train.jsonl and uploads them to S3.
 4. Fine-Tune: They submit a fine-tuning job; the system trains their LLM Twin.
-5. Chat: Alice chats with her personalized AI, which responds in her style.
+5. Chat: They chat with their personalized AI, which responds in their style.
 
 ```mermaid
 graph TD
