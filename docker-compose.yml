@@ -3,13 +3,7 @@ services:
     build:
       context: ./packages/data-prep
       dockerfile: Dockerfile
-    command:
-      - uvicorn
-      - app.main:app
-      - --host
-      - "0.0.0.0"
-      - --port
-      - "8000"
+    command: fastapi run src/app/main.py --host 0.0.0.0 --port 8000
     env_file:
       - .env
     healthcheck:
@@ -21,7 +15,7 @@ services:
     environment:
       - UV_COMPILE_BYTECODE=1
       - UV_LINK_MODE=copy
-      - FINE_TUNING_SERVICE_URL=http://unsloth-backend:8000
+      - FINE_TUNING_SERVICE_URL=http://unsloth-backend:8000/fine-tune/
     volumes:
       - ./packages/data-prep/conf:/app/conf
       - ./packages/data-prep/data:/app/data
@@ -30,13 +24,14 @@ services:
       watch:
         # only sync source code & main script
         - action: sync
-          path: ./packages/data-prep/app
-          target: /app/app
+          path: ./packages/data-prep/src/app
+          target: /app/src/app
 
   unsloth-backend:
     build:
       context: ./packages/unsloth-backend
       dockerfile: Dockerfile
+    command: fastapi run src/app/main.py --host 0.0.0.0 --port 8000
     deploy:
       resources:
         reservations:
@@ -55,28 +50,16 @@ services:
       - ./packages/unsloth-backend/conf:/app/conf
       - ./packages/unsloth-backend/logs:/app/logs
     healthcheck:
-      test: [CMD-SHELL, curl -f http://localhost:8000/health || exit 1]
+      test: [CMD-SHELL, curl -f http://localhost:8000/system/health || exit 1]
       interval: 60s
       timeout: 5s
       retries: 5
       start_period: 60s
     develop:
       watch:
-        # only sync source code & main script
         - action: sync
-          path: ./packages/unsloth-backend/src
-          target: /app/src
-        - action: sync
-          path: ./packages/unsloth-backend/main.py
-          target: /app/main.py
-        - action: sync
-          path: ./packages/unsloth-backend/routers
-          target: /app/routers
-        - action: sync
-          path: ./packages/unsloth-backend/dependencies.py
-          target: /app/dependencies.py
-
-
+          path: ./packages/data-prep/src/app
+          target: /app/src/app
 
   frontend:
     build:
@@ -90,8 +73,8 @@ services:
     environment:
       - STREAMLIT_SERVER_PORT=8501
       - DATA_PREP_URL=http://data-prep:8000
-      - FINE_TUNING_SERVICE_URL=http://unsloth-backend:8000
-      - INFERENCE_URL=http://unsloth-backend:8000
+      - FINE_TUNING_SERVICE_URL=http://unsloth-backend:8000/fine-tune/
+      - INFERENCE_URL=http://unsloth-backend:8000/infer/
     volumes:
       - ./packages/frontend/conf:/app/conf
       - ./packages/frontend/assets:/app/assets

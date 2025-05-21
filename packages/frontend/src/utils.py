@@ -64,7 +64,7 @@ def parse_json_chats(
     return raw_chats, sorted_senders
 
 
-def poll_job(url: str, interval: int = 10) -> Dict[str, Any]:
+def poll_job(url: str, interval: int = 20) -> Dict[str, Any]:
     """
     Poll a FastAPI job endpoint until it finishes or errors.
 
@@ -92,35 +92,26 @@ def poll_job(url: str, interval: int = 10) -> Dict[str, Any]:
 
 def display_chat_summary(stats: Dict[str, Any]) -> None:
     """
-    Show summary metrics and a Top-10 pie chart of block counts.
+    Show training-data statistics in a collapsible panel:
+      - The raw `stats` JSON
+      - A small pie chart of the Top-10 chat block counts
 
     Args:
         stats: The 'stats' mapping from the data-prep response.
     """
-    st.subheader("📊 Summary Statistics")
+    with st.expander("View training data statistics", expanded=False):
+        st.subheader("📋 Raw Statistics")
+        # Display the full stats dict as JSON
+        st.json(stats)
 
-    # High-level metrics
-    cols = st.columns(3)
-    cols[0].metric("Chats", stats.get("num_chats", 0))
-    cols[0].metric("Blocks", stats.get("num_blocks", 0))
-    cols[1].metric("Min tokens", stats.get("min_tokens_per_block", 0))
-    cols[1].metric("Max tokens", stats.get("max_tokens_per_block", 0))
-    cols[2].metric("Avg tokens", round(stats.get("avg_tokens_per_block", 0), 2))
+        # Pie chart of Top-10 block counts
+        breakdown = stats.get("block_breakdown", {})
+        if not breakdown:
+            st.info("No block breakdown available.")
+            return
 
-    cols2 = st.columns(3)
-    cols2[0].metric(
-        "Min dur (min)", round(stats.get("min_duration_minutes_per_block", 0), 2)
-    )
-    cols2[1].metric(
-        "Max dur (min)", round(stats.get("max_duration_minutes_per_block", 0), 2)
-    )
-    cols2[2].metric(
-        "Avg dur (min)", round(stats.get("avg_duration_minutes_per_block", 0), 2)
-    )
-    # Show the top-10 chat distribution as a pie chart
-    breakdown = stats.get("block_breakdown", {})
-    if breakdown:
-        st.subheader("Top-10 Chat Distribution")
+        st.subheader("📊 Top-10 Chat Distribution")
+        # Build DataFrame and group “others”
         df = (
             pd.DataFrame(breakdown.items(), columns=["Chat", "Blocks"])
             .sort_values("Blocks", ascending=False)
@@ -128,17 +119,20 @@ def display_chat_summary(stats: Dict[str, Any]) -> None:
         )
         top = df.head(10).copy()
         if len(df) > 10:
-            top.loc[len(top)] = ["Others", df["Blocks"].iloc[10:].sum()]
+            others_sum = int(df["Blocks"].iloc[10:].sum())
+            top.loc[len(top)] = ["Others", others_sum]
 
-        fig, ax = plt.subplots(figsize=(4, 4))
+        # Smaller pie chart
+        fig, ax = plt.subplots(figsize=(3, 3))
         wedges, texts, autopcts = ax.pie(
             top["Blocks"],
             labels=top["Chat"],
             autopct=lambda pct: f"{pct:.1f}%",
             startangle=90,
-            pctdistance=0.8,
+            pctdistance=0.75,
         )
         ax.axis("equal")
-        plt.setp(autopcts, size=8, weight="medium")
+        plt.setp(autopcts, size=7)
         plt.tight_layout()
-        st.pyplot(fig)
+
+        st.pyplot(fig, use_container_width=False)

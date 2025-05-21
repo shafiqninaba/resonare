@@ -21,6 +21,10 @@ if "run_ids" not in st.session_state:
 if "run_id_locked" not in st.session_state:
     st.session_state.run_id_locked = False
 
+if "train_metadata" not in st.session_state:
+    st.session_state.train_metadata = {"x-amz-meta-target_name": "assistant"}
+
+
 # --- Run ID Input ---
 run_id_input = st.text_input(
     "Enter Run ID",
@@ -86,20 +90,22 @@ if prompt := st.chat_input("What is up?"):
         is_error = False
         try:
             # Assuming your FastAPI backend is running at http://localhost:8000
-            INFERENCE_URL = os.getenv("INFERENCE_URL")
+            INFERENCE_URL = os.getenv(
+                "INFERENCE_URL", "http://unsloth-backend:8000/infer/"
+            )
 
             # join the inference URL with the endpoint
             api_url = urljoin(INFERENCE_URL, "/infer")
             # Send the entire message history in the payload
             payload = {
-                "run_id": st.session_state.run_id,
+                "run_id": st.session_state.run_id.strip(),
                 "messages": st.session_state.messages,
                 "temperature": temperature,  # Add temperature to payload
             }
 
             # Set spinner text based on whether it's the first message
             spinner_text = (
-                "Downloading model..."
+                "Loading Model..."
                 if is_first_message
                 else "Waiting for model response..."
             )
@@ -107,7 +113,7 @@ if prompt := st.chat_input("What is up?"):
             # Add a spinner while waiting for the backend
             with st.spinner(spinner_text):
                 response = requests.post(
-                    api_url, json=payload, timeout=120
+                    api_url, json=payload, timeout=150,
                 )  # Added timeout
                 response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
                 api_response = response.json()
@@ -148,9 +154,11 @@ if prompt := st.chat_input("What is up?"):
         # Display assistant response(s)
         if is_error or not assistant_response_content:
             # Display the error as a single message
-            with st.chat_message(train_metadata["x-amz-meta-target_name"]):
+            meta = st.session_state.train_metadata
+            role = meta.get("x-amz-meta-target_name", "assistant")
+            with st.chat_message(role):
                 st.markdown(
-                    f"{train_metadata['x-amz-meta-target_name']}: {assistant_response_content}"
+                    f"{role}: {assistant_response_content}"
                     or "Error: Empty response received."
                 )
             # Add the single error message to history
